@@ -1,0 +1,11 @@
+{"jobs": [
+ {"id": 1, "title": "Senior Backend Engineer, Payments", "absolute_url": "https://boards.greenhouse.io/acme/jobs/1",
+  "location": {"name": "New York, NY"}, "updated_at": "2026-10-01T00:00:00Z", "company_name": "Stripe",
+  "content": "&lt;p&gt;We need 5+ years of experience with Python or Go, Kafka, PostgreSQL and AWS. Kubernetes a plus. Fintech.&lt;/p&gt;&lt;p&gt;$180,000 - $220,000&lt;/p&gt;",
+  "departments": [{"name": "Engineering"}]},
+ {"id": 2, "title": "Staff Machine Learning Engineer", "absolute_url": "https://boards.greenhouse.io/acme/jobs/2",
+  "location": {"name": "San Francisco, CA"}, "company_name": "Stripe",
+  "content": "&lt;p&gt;10+ years of experience in machine learning, PyTorch, TensorFlow, Spark.&lt;/p&gt;", "departments": []},
+ {"id": 3, "title": "Software Engineering Intern", "absolute_url": "https://boards.greenhouse.io/acme/jobs/3",
+  "location": {"name": "Remote"}, "company_name": "Stripe", "content": "&lt;p&gt;Python&lt;/p&gt;", "departments": []}
+]}

@@ -1,0 +1,4 @@
+[{"id": "abc", "text": "Platform Engineer", "hostedUrl": "https://jobs.lever.co/palantir/abc",
+  "categories": {"location": "Remote - US", "team": "Infra", "commitment": "Full-time"}, "workplaceType": "remote",
+  "descriptionPlain": "Run our Kubernetes platform.", "lists": [{"text": "Requirements", "content": "<li>3+ years of experience with Terraform and AWS</li><li>Go or Python</li>"}],
+  "additionalPlain": "", "createdAt": 1790000000000, "salaryRange": {"min": 160000, "max": 200000}}]

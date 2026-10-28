@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jolai"
+version = "0.1.0"
+description = "Resume-driven job finder: scrapes job boards and ranks roles by fit and preference."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "pypdf>=4.0",
+    "python-docx>=1.1",
+    "pyyaml>=6.0",
+    "scikit-learn>=1.4",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+llm = ["anthropic>=2.0", "pydantic>=2.0"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+jolai = "jolai.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["jolai*"]

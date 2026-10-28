@@ -1,0 +1,18 @@
+Jordan Lee
+Brooklyn, NY | jordan@example.com
+
+SUMMARY
+Backend engineer with 5+ years of experience building distributed systems and payments APIs.
+
+EXPERIENCE
+Senior Software Engineer | Acme Payments | Jan 2022 - Present
+- Built Python and Go microservices on AWS with Kubernetes and Terraform
+- Designed PostgreSQL schemas and Kafka pipelines processing 2M events/day
+- Mentored 3 engineers; led migration to gRPC
+
+Software Engineer, Widgets Inc — Jun 2019 - Dec 2021
+- Django and FastAPI REST APIs, Redis caching, Docker, CI/CD with GitHub Actions
+- React dashboards in TypeScript
+
+SKILLS
+Python, Go, SQL, TypeScript, AWS, Docker, Kubernetes, PostgreSQL, Kafka, Linux, Git

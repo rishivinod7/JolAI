@@ -1,0 +1,46 @@
+# Copy to config.yaml (git-ignored) and edit.
+resume: resume.pdf
+
+preferences:
+  # Roles you want. Used to score "want" and as search terms for Remotive.
+  titles: ["Backend Engineer", "Software Engineer", "Platform Engineer"]
+  locations: ["New York", "Brooklyn"]   # substring match against the posting's location
+  remote: true            # remote roles count as a location match
+  remote_only: false      # drop everything that isn't remote
+  keywords: ["fintech", "distributed systems", "developer tools"]   # things you'd like to work on
+  exclude_keywords: ["security clearance", "unpaid"]                # drop postings mentioning these
+  exclude_title_keywords: ["intern", "director", "sales"]           # drop titles with these words
+  exclude_companies: []
+  min_salary: 150000
+  # Fix-ups if `jolai profile` misreads your resume:
+  extra_skills: []          # e.g. ["Kubernetes", "Go"]
+  # years_experience: 5
+
+weights:
+  # 1.0 = rank purely by how likely you are to get the job,
+  # 0.0 = rank purely by how well it matches your preferences.
+  chance_vs_want: 0.6
+
+sources:
+  # Company boards. The name is the last part of the careers URL:
+  #   boards.greenhouse.io/<name>   jobs.lever.co/<name>   jobs.ashbyhq.com/<name>
+  greenhouse: [stripe, airbnb, figma, datadog]
+  lever: [palantir, spotify]
+  ashby: [ramp, notion, openai]
+  # Any careers page that publishes schema.org JobPosting data (most do, for Google Jobs).
+  career_pages: []
+  # Aggregators
+  remotive: true
+  remoteok: true
+  hackernews: true          # latest "Ask HN: Who is hiring?" thread
+  hackernews_months: 1
+  # search_terms: ["python", "backend"]   # defaults to your first 3 titles
+
+llm:
+  enabled: false            # or pass --llm
+  model: claude-opus-5-5
+  top_n: 20                 # how many heuristic matches to send for re-ranking
+
+output:
+  top: 25
+  dir: results

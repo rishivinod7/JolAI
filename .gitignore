@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.jolai_cache/
+results/
+config.yaml
+*.egg-info/
+# keep personal resumes out of git
+/resume.*
