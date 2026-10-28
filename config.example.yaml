@@ -13,6 +13,10 @@ preferences:
 
   # Hard filters: jobs that break these are dropped before scoring.
   english_only: true      # drop jobs that require another language ("a plus" is OK)
+  languages_spoken: []    # other languages you speak, e.g. [Hindi]; jobs requiring them stay
+  work_permits: []        # countries you can already work in, e.g. [India, Hong Kong]
+  open_to_sponsorship: true          # keep jobs elsewhere unless they say they won't sponsor
+  hide_unclear_sponsorship: false    # true = elsewhere only if the posting says it sponsors
   max_technical: low      # low = not technical, medium = a little, any = no limit
   max_years: 3            # drop jobs asking for more years of experience than this
   max_level: mid          # drop titles above this: entry, mid, senior (or leave out)

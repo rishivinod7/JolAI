@@ -109,6 +109,18 @@ with st.sidebar:
                                              ", ".join(prefs.get("locations", []))))
     prefs["remote"] = st.toggle("Remote jobs are OK", prefs.get("remote", True))
     prefs["remote_only"] = st.toggle("Only show remote jobs", prefs.get("remote_only", False))
+    prefs["work_permits"] = lines(st.text_input(
+        "Countries you can already work in (comma separated)", ", ".join(prefs.get("work_permits") or []),
+        placeholder="India, Hong Kong",
+        help="Jobs elsewhere are checked for visa sponsorship. Leave empty to skip this check."))
+    if prefs["work_permits"]:
+        prefs["open_to_sponsorship"] = st.toggle(
+            "Show jobs elsewhere that may sponsor a visa", prefs.get("open_to_sponsorship", True),
+            help="Jobs that say they won't sponsor are always hidden.")
+        prefs["hide_unclear_sponsorship"] = st.toggle(
+            "…only if they say they sponsor", prefs.get("hide_unclear_sponsorship", False),
+            disabled=not prefs["open_to_sponsorship"],
+            help="Most postings don't mention sponsorship either way, so this hides a lot of jobs.")
     prefs["keywords"] = lines(st.text_input("Topics you'd enjoy (comma separated)",
                                             ", ".join(prefs.get("keywords", [])),
                                             placeholder="education, healthcare, travel"))
@@ -117,6 +129,9 @@ with st.sidebar:
     prefs["english_only"] = st.toggle("English only", prefs.get("english_only", False),
                                       help="Hide jobs that require another language. Jobs where another "
                                            "language is just 'a plus' stay, with a note.")
+    prefs["languages_spoken"] = lines(st.text_input(
+        "Other languages you speak (comma separated)", ", ".join(prefs.get("languages_spoken") or []),
+        placeholder="Hindi", help="Jobs requiring these languages won't be hidden."))
     tech_options = {"Not technical": "low", "A little technical is fine": "medium", "Any": "any"}
     current_tech = next((k for k, v in tech_options.items() if v == str(prefs.get("max_technical", "any"))), "Any")
     prefs["max_technical"] = tech_options[st.select_slider(
@@ -276,9 +291,12 @@ def job_card(m, key_prefix: str) -> None:
             badges = [f"{technical_label(f.technical)} technical", f"{LEVELS[f.level]} level"]
             if f.years_required:
                 badges.append(f"asks {f.years_required}+ yrs")
+            auth_badge = {"ok": ("✓ you can work here", "ok"), "sponsors": ("sponsors visas", "ok"),
+                          "unclear": ("visa sponsorship unclear", "warn")}.get(f.work_authorization or "")
             warn = [f"needs {lang}" for lang in f.languages_required] + \
                    [f"{lang} a plus" for lang in f.languages_optional]
-            st.markdown(chips(badges) + chips(warn, "warn"), unsafe_allow_html=True)
+            auth_html = chips([auth_badge[0]], auth_badge[1]) if auth_badge else ""
+            st.markdown(chips(badges) + auth_html + chips(warn, "warn"), unsafe_allow_html=True)
             why = m.llm_summary or " · ".join(m.reasons[:4])
             if why:
                 st.markdown(f'<div class="why">{html.escape(why)}</div>', unsafe_allow_html=True)

@@ -10,6 +10,8 @@ per search.
 - **English only**: hides jobs that need another language; "German is a plus" stays, with a note
 - **Not too technical**: rates every job from not technical to very technical, and lets you set a limit
 - **Not too much experience**: hides jobs asking for more years, or a more senior level, than you choose
+- **Work permits and visas**: tell it where you can already work. Jobs elsewhere are kept only if
+  they don't rule out visa sponsorship, and they're marked "sponsors visas" or "sponsorship unclear"
 - **Explains every match**: which of your skills fit, what's missing, and why it ranked where it did
 - **Keeps track**: save, mark as applied, or hide jobs
 

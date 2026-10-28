@@ -47,6 +47,10 @@ def preferences_from(config: dict) -> Preferences:
         exclude_companies=list(p.get("exclude_companies") or []),
         min_salary=p.get("min_salary"),
         english_only=bool(p.get("english_only", False)),
+        languages_spoken=list(p.get("languages_spoken") or []),
+        work_permits=list(p.get("work_permits") or []),
+        open_to_sponsorship=bool(p.get("open_to_sponsorship", True)),
+        hide_unclear_sponsorship=bool(p.get("hide_unclear_sponsorship", False)),
         max_years=p.get("max_years"),
         max_level=p.get("max_level"),
         max_technical=_technical_limit(p.get("max_technical")),
@@ -67,7 +71,13 @@ def describe_preferences(prefs: Preferences) -> str:
     if prefs.min_salary:
         lines.append(f"Minimum salary: ${prefs.min_salary:,.0f}")
     if prefs.english_only:
-        lines.append("Only speaks English: any other required language is a dealbreaker.")
+        spoken = ", ".join(["English"] + prefs.languages_spoken)
+        lines.append(f"Speaks only {spoken}: any other required language is a dealbreaker.")
+    if prefs.work_permits:
+        lines.append("Can already work in: " + ", ".join(prefs.work_permits) + ". " +
+                     ("Elsewhere they need visa sponsorship; a posting that rules out sponsorship or requires "
+                      "existing local work rights is a dealbreaker." if prefs.open_to_sponsorship else
+                      "Not open to other countries."))
     if prefs.max_years is not None:
         lines.append(f"Wants roles asking for at most {prefs.max_years} years of experience.")
     if prefs.max_technical is not None:

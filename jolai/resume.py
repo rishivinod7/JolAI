@@ -34,10 +34,24 @@ TITLE_WORDS = (
     "strategist|writer|recruiter|accountant|officer|sre|devops|assistant|representative|agent|advisor|"
     "executive|clerk|receptionist|teacher|tutor|nurse|editor|marketer|planner|supervisor"
 )
+# Up to 6 capitalised words (or "&", "and", "of") before a title word: "Travel Retail & Corporate Business APAC Intern".
+# The prefix is case-sensitive so sentences like "Onboarded and trained an incoming intern" don't count.
 TITLE_RE = re.compile(
-    rf"^\s*((?:[A-Z][\w/&+.-]*\s+){{0,4}}(?:{TITLE_WORDS})\b(?:\s+(?:I|II|III|IV|[A-Z][\w/&+.-]*)){{0,3}})",
+    rf"^\s*((?:(?:[A-Z][\w/&+.()-]*|&|and|of|-|–)\s+){{0,6}}(?i:{TITLE_WORDS})\b"
+    rf"(?:\s+(?:I|II|III|IV|[A-Z][\w/&+.-]*)){{0,3}}"
+    rf"(?:\s+[–-]\s+[A-Z][\w/&+.-]*(?:\s+[A-Z][\w/&+.-]*){{0,3}})?)"  # "Senior Associate – UX Design"
+)
+
+# Resume section headings. Dates are only counted as work experience inside work sections,
+# so degrees and side projects don't inflate your years.
+SECTION_RE = re.compile(
+    r"^\s*(?P<name>(?:professional |work |relevant |career )?(?:experience|employment(?: history)?|work history)|"
+    r"education|academic\w*|projects?|personal projects|certifications?|skills|technical skills|core skills|"
+    r"profile|summary|about me|awards|achievements|publications|volunteer\w*|interests|languages|references)"
+    r"\s*:?\s*$",
     re.I,
 )
+WORK_SECTION_RE = re.compile(r"experience|employment|work history", re.I)
 
 
 def read_resume_text(path: str | Path) -> str:
@@ -82,11 +96,34 @@ def _parse_point(token: str, *, is_end: bool) -> date | None:
     return date(year, month, 1)
 
 
-def estimate_years(text: str) -> float:
-    """Estimate total professional experience by merging the date ranges in the resume.
+def split_sections(text: str) -> dict[str, str]:
+    """Split a resume into {heading: text}. Text before the first heading goes under "header"."""
+    sections: dict[str, list[str]] = {"header": []}
+    current = "header"
+    for line in text.splitlines():
+        m = SECTION_RE.match(line)
+        if m:
+            current = m.group("name").lower()
+            sections.setdefault(current, [])
+        else:
+            sections[current].append(line)
+    return {name: "\n".join(lines) for name, lines in sections.items()}
 
-    Falls back to explicit claims like "7+ years of experience" when those are larger.
+
+def work_text(text: str) -> str:
+    """Just the work-experience part of a resume, or the whole resume if it has no such heading."""
+    work = [body for name, body in split_sections(text).items() if WORK_SECTION_RE.search(name)]
+    return "\n".join(work) if work else text
+
+
+def estimate_years(text: str) -> float:
+    """Estimate total professional experience by merging the date ranges in the work section(s).
+
+    Overlapping jobs are counted once. Falls back to explicit claims like "7+ years of
+    experience" when those are larger.
     """
+    claims = [int(n) for n in YEARS_CLAIM_RE.findall(text)]
+    text = work_text(text)
     intervals = []
     for start_s, end_s in DATE_RANGE_RE.findall(text):
         start, end = _parse_point(start_s, is_end=False), _parse_point(end_s, is_end=True)
@@ -100,19 +137,21 @@ def estimate_years(text: str) -> float:
         else:
             merged.append([start, end])
     from_ranges = sum((e - s).days for s, e in merged) / 365.25
-
-    claims = [int(n) for n in YEARS_CLAIM_RE.findall(text)]
     return round(max([from_ranges] + claims), 1)
 
 
 def extract_titles(text: str, limit: int = 6) -> list[str]:
+    """Job titles from the work section, most recent first (as they appear in the resume)."""
     titles: list[str] = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or len(line) > 90:
+    for line in work_text(text).splitlines():
+        line = re.sub(r"\s+", " ", line).strip()  # PDFs often pad columns with runs of spaces
+        if not line or len(line) > 160 or line[0] in "•·-*–●▪◦":
             continue
         # Titles usually sit on their own line or before a separator such as "|", "," or "at".
-        head = re.split(r"\s+(?:\||@|at|-|–|—)\s+|,|\t", line)[0]
+        if "|" in line:
+            head = line.split("|")[0]  # "Title | Company | Dates": a dash before the "|" is part of the title
+        else:
+            head = re.split(r"\s+(?:@|at|-|–|—)\s+|,|\t", line)[0]
         m = TITLE_RE.match(head)
         if m and len(m.group(1).split()) <= 7:
             title = re.sub(r"\s+", " ", m.group(1)).strip(" -,")
@@ -132,7 +171,8 @@ def level_for(years: float, titles: list[str]) -> int:
         level = 3
     else:
         level = 4
-    joined = " ".join(titles).lower()
+    # "Senior Associate" is a mid-level title at most firms, so it doesn't count as senior.
+    joined = re.sub(r"senior associate", "associate", " ".join(titles).lower())
     if re.search(r"\bprincipal\b", joined):
         level = max(level, 5)
     elif re.search(r"\bstaff\b", joined):

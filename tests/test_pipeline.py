@@ -207,7 +207,7 @@ def test_nontech_search_filters():
     assert "Administrative Assistant" in profile.titles and "Zendesk" in profile.skills
     matches, filtered = pipeline.rank(profile, pipeline.load_jobs(FIX / "jobs_mixed.json"), config)
     assert [m.job.title for m in matches] == ["Customer Support Specialist", "Social Media Coordinator"]
-    assert filtered == {"needs a language other than English": 2, "asks for too many years": 2, "too technical": 1}
+    assert filtered == {"needs a language you don't speak": 2, "asks for too many years": 2, "too technical": 1}
     assert any("Spanish is a plus" in r for r in matches[0].reasons)
 
     # Without the filters everything comes back, and the engineering job ranks low on chance.
@@ -273,3 +273,68 @@ def test_ui_shows_resume_before_any_search(tmp_path, monkeypatch):
     assert not app.exception
     assert any("What JolAI read from your resume" in e.label for e in app.expander)
     assert any("Zendesk" in md.value for md in app.markdown)
+
+
+# ---- business-role search with work permits and visa sponsorship ---------------------
+
+BUSINESS_PREFS = {
+    "titles": ["Business Analyst", "Product Strategy", "Project Coordinator", "Partnerships Manager",
+               "Strategy Associate", "Product Operations"],
+    "keywords": ["product strategy", "partnerships", "stakeholder", "business analysis"],
+    "work_permits": ["India", "Hong Kong SAR"], "english_only": True, "max_technical": "medium",
+    "max_years": 5, "max_level": "senior",
+}
+
+
+def test_resume_sections_titles_and_years():
+    from jolai.resume import load_profile
+
+    profile = load_profile(FIX / "resume_business.txt")
+    # Degrees (2017-2021, 2025-2026) must not count as work: 3 + 33 + 6 months of jobs ~= 3.5 years.
+    assert 3.3 <= profile.years_experience <= 3.8
+    assert profile.level == 2  # "Senior Associate" is not a senior title
+    assert profile.titles == ["Travel Retail & Corporate Business APAC Intern", "Senior Associate – UX Design",
+                              "Associate Software Developer", "UI Design Consultant"]
+    assert {"Stakeholder Management", "Requirements Analysis", "Project Coordination", "Vendor Management",
+            "Partnerships", "Data Visualization", "Power BI", "SAP"} <= profile.skills
+
+
+def test_work_authorization():
+    from jolai.filters import work_authorization as auth
+
+    permits = ["India", "Hong Kong"]
+    assert auth("Bengaluru, India", False, "", permits) == "ok"
+    assert auth("Kowloon, HK", False, "", permits) == "ok"
+    assert auth("Remote (APAC)", True, "", permits) == "ok"
+    assert auth("Remote", True, "", permits) == "ok"
+    assert auth("Remote - Europe", True, "", permits) == "unclear"
+    assert auth("Singapore", False, "Visa sponsorship available.", permits) == "sponsors"
+    assert auth("London, UK", False, "You must have the right to work in the UK.", permits) == "blocked"
+    assert auth("Austin, TX", False, "We are unable to sponsor visas.", permits) == "blocked"
+    assert auth("Amsterdam", False, "Great team.", permits) == "unclear"
+
+
+def test_business_search_ranking():
+    from jolai import pipeline
+
+    config = {"resume": str(FIX / "resume_business.txt"), "preferences": dict(BUSINESS_PREFS)}
+    profile = pipeline.read_profile(config)
+    matches, filtered = pipeline.rank(profile, pipeline.load_jobs(FIX / "jobs_business.json"), config)
+    titles = [m.job.title for m in matches]
+    assert titles[:2] == ["Business Analyst", "Strategy & Operations Associate"]  # in HK / India, strong fit
+    assert set(titles[2:]) == {"Product Strategy Associate", "Product Operations Analyst", "Partnerships Lead"}
+    assert filtered == {"won't sponsor a visa": 2, "too technical": 1, "asks for too many years": 2,
+                        "needs a language you don't speak": 1}
+    sponsored = next(m for m in matches if m.job.company == "LionPay")
+    unclear = next(m for m in matches if m.job.company == "CanalTech")
+    assert sponsored.facts.work_authorization == "sponsors" and unclear.facts.work_authorization == "unclear"
+    # "Partnerships Lead" isn't treated as managing people.
+    lead = next(m for m in matches if m.job.title == "Partnerships Lead")
+    assert not any("people-management" in r for r in lead.reasons)
+
+    # Speaking the language brings the Cantonese role back; strict sponsorship hides "unclear" ones.
+    config["preferences"]["languages_spoken"] = ["Cantonese", "Mandarin"]
+    config["preferences"]["hide_unclear_sponsorship"] = True
+    matches, filtered = pipeline.rank(profile, pipeline.load_jobs(FIX / "jobs_business.json"), config)
+    titles = [m.job.title for m in matches]
+    assert "Business Development Executive" in titles and "Product Operations Analyst" not in titles

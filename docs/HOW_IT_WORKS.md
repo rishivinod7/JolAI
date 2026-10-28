@@ -25,8 +25,10 @@ The results are shown by `ui.py` (the web page) or `report.py` (terminal table, 
 - **Text**: PDFs are read with `pypdf` and Word files with `python-docx`.
 - **Skills**: `skills.py` has a list of about 120 skills, each with other ways people write it
   ("customer support", "help desk" → *Customer Service*). Any of those found in your resume count.
-- **Years of experience**: every date range like "Mar 2023 – Present" is found and the ranges are
-  added up, with overlaps counted once.
+- **Sections**: headings like EXPERIENCE, EDUCATION and PROJECTS split the resume up.
+- **Years of experience**: every date range like "Mar 2023 – Present" *in the work section* is found,
+  and the ranges are added up with overlaps counted once. Degree and project dates are ignored.
+- **Titles**: the first part of each work line ("Senior Associate – UX Design | Company | Dates").
 - **Level**: worked out from your years, bumped up if a title says Senior, Lead and so on:
   intern → entry → mid → senior → staff → principal.
 
@@ -53,11 +55,17 @@ First, `filters.py` reads each posting and works out:
 - **languages**: which non-English languages are *required* ("fluent German", "French is
   required", or a posting written in German) and which are only *a plus*
 - **how technical** it is, 0–100: an engineering-style title, how many technical tools it lists,
-  and words like "coding" or "system design"
+  and words like "coding" or "system design". Business tools (Power BI, Excel, Jira…) don't count.
+- **whether you can work there**, if you've set the countries you hold work permits for:
+  - *ok*: the job is in one of them, or is remote for a region that includes them (e.g. APAC)
+  - *sponsors*: elsewhere, but the posting mentions visa sponsorship or relocation support
+  - *unclear*: elsewhere, and the posting doesn't say (most postings don't)
+  - *blocked*: elsewhere, and the posting says "no sponsorship" or "must have the right to work in…"
 
 `matcher.py` adds the **level** from the title and the **years** asked for ("3+ years of
-experience"). Then `excluded()` drops jobs that break one of your rules: English only, not too
-technical, max years, highest seniority, hidden words or companies.
+experience"). Then `excluded()` drops jobs that break one of your rules: a language you don't speak,
+too technical, too many years, too senior, won't sponsor your visa, hidden words or companies.
+Jobs where sponsorship is *unclear* stay, but score lower on "want" and carry a yellow badge.
 
 Every remaining job gets two scores:
 - **Chance**, how likely you are to get it:
@@ -96,6 +104,7 @@ All in `results/` (git-ignored):
 |---|---|
 | Recognise a new skill | add it to `SKILLS` in `skills.py` |
 | Catch another way postings phrase language rules | `REQUIRED_PATTERNS` / `_SOFT` in `filters.py` |
+| Recognise a city or country, or sponsorship wording | `COUNTRIES`, `SPONSORS_RE`, `NO_SPONSOR_RE` in `filters.py` |
 | Change what counts as "technical" | `technical_score` in `filters.py` |
 | Change how scores are weighted | `score_jobs` in `matcher.py` |
 | Add a job site | a new function in `sources/` returning `list[Job]`, then register it in `sources/__init__.py` |

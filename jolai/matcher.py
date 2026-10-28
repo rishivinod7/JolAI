@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from .filters import language_requirements, technical_score
+from .filters import language_requirements, technical_score, work_authorization
 from .models import Job, Match, Profile
 from .resume import LEVELS
 from .skills import extract_skills
@@ -34,6 +34,8 @@ LEVEL_PATTERNS = [
     (1, r"\b(junior|jr\.?|entry[- ]level|new grad(uate)?|graduate|associate)\b|\b(engineer|developer)\s+(i|1)\b"),
 ]
 MANAGEMENT_RE = re.compile(r"\b(manager|director|head of|vp|vice president)\b", re.I)
+PEOPLE_MGMT_RE = re.compile(r"direct reports|people management|manag(e|ing) a team|lead(ing)? a team of|"
+                            r"build(ing)? (and lead(ing)? )?a team|hire and (develop|manage)|line management", re.I)
 YEARS_REQ_RE = re.compile(r"(\d{1,2})\s*\+?\s*(?:-|–|to)?\s*(?:\d{1,2})?\s*\+?\s*(?:years|yrs)", re.I)
 TITLE_NOISE = {"senior", "sr", "junior", "jr", "staff", "principal", "lead", "i", "ii", "iii", "iv", "the", "of",
                "and", "remote", "hybrid", "contract", "full", "time", "part", "new", "grad"}
@@ -51,6 +53,10 @@ class Preferences:
     exclude_companies: list[str] = field(default_factory=list)
     min_salary: float | None = None
     english_only: bool = False  # drop jobs that require another language
+    languages_spoken: list[str] = field(default_factory=list)  # other languages you speak; these never filter
+    work_permits: list[str] = field(default_factory=list)  # countries you can already work in
+    open_to_sponsorship: bool = True  # keep jobs elsewhere if they sponsor visas (or don't say)
+    hide_unclear_sponsorship: bool = False  # elsewhere + posting doesn't mention sponsorship -> drop
     max_years: int | None = None  # drop jobs asking for more years than this
     max_level: str | None = None  # drop titles above this level, e.g. "mid" drops senior/staff/principal
     max_technical: int | None = None  # drop jobs whose technical score (0-100) is above this
@@ -66,16 +72,20 @@ class JobFacts:
     languages_required: list[str]
     languages_optional: list[str]
     technical: int
+    work_authorization: str | None = None  # "ok", "sponsors", "unclear", "blocked" (None = no permits set)
 
 
-def read_job(job: Job) -> JobFacts:
+def read_job(job: Job, prefs: Preferences | None = None) -> JobFacts:
     required, optional = language_requirements(job.description)
+    permits = prefs.work_permits if prefs else []
     return JobFacts(
         level=job_level(job.title),
         years_required=years_required(job.description),
         languages_required=required,
         languages_optional=optional,
         technical=technical_score(job.title, job.description),
+        work_authorization=work_authorization(job.location, job.remote, job.description, permits)
+        if permits else None,
     )
 
 
@@ -127,8 +137,16 @@ def excluded(job: Job, facts: JobFacts, prefs: Preferences) -> str | None:
             return f"mentions '{kw}'"
     if prefs.remote_only and not job.remote:
         return "not remote"
-    if prefs.english_only and facts.languages_required:
-        return "needs a language other than English"
+    spoken = {lang.strip().title() for lang in prefs.languages_spoken}
+    if prefs.english_only and set(facts.languages_required) - spoken:
+        return "needs a language you don't speak"
+    auth = facts.work_authorization
+    if auth == "blocked":
+        return "won't sponsor a visa"
+    if auth in {"sponsors", "unclear"} and not prefs.open_to_sponsorship:
+        return "outside the countries you can work in"
+    if auth == "unclear" and prefs.hide_unclear_sponsorship:
+        return "doesn't say if it sponsors visas"
     if prefs.max_years is not None and facts.years_required and facts.years_required > prefs.max_years:
         return "asks for too many years"
     if prefs.max_level and prefs.max_level in LEVELS and facts.level > LEVELS.index(prefs.max_level):
@@ -141,8 +159,10 @@ def excluded(job: Job, facts: JobFacts, prefs: Preferences) -> str | None:
 def _seniority_fit(profile: Profile, job: Job, facts: JobFacts) -> tuple[float, list[str]]:
     """How well the posting's level and years requirement fit yours (0-1), with reasons."""
     reasons = []
-    is_mgmt = bool(MANAGEMENT_RE.search(job.title)) and not re.search(r"product manager|program manager|project manager",
-                                                                         job.title, re.I)
+    # "Partnerships Manager" is usually an individual role; only count it as managing people when
+    # the title is director-level or the posting talks about leading a team.
+    is_mgmt = bool(re.search(r"\b(director|head of|vp|vice president|chief)\b", job.title, re.I)) or (
+        bool(MANAGEMENT_RE.search(job.title)) and bool(PEOPLE_MGMT_RE.search(job.description)))
     level = facts.level
     diff = level - profile.level
     level_score = {0: 1.0, -1: 0.85, 1: 0.6, -2: 0.55, 2: 0.25}.get(diff, 0.05)
@@ -165,15 +185,17 @@ def _seniority_fit(profile: Profile, job: Job, facts: JobFacts) -> tuple[float, 
     return 0.5 * level_score + 0.5 * years_score, reasons
 
 
-def _location_fit(job: Job, prefs: Preferences) -> float | None:
+def _location_fit(job: Job, prefs: Preferences, facts: JobFacts) -> float | None:
+    """1.0 = somewhere you can and want to work; lower for visa uncertainty or unwanted places."""
+    auth = {"ok": 1.0, "sponsors": 0.85, "unclear": 0.45}.get(facts.work_authorization or "", None)
     if not prefs.locations and not prefs.remote_only:
-        return None
+        return auth
     if job.remote and (prefs.remote or prefs.remote_only):
         return 1.0
     loc = job.location.lower()
     if any(p.lower() in loc for p in prefs.locations if p.lower() != "remote"):
-        return 1.0
-    return 0.15
+        return 1.0 if auth is None else auth
+    return 0.15 if auth is None else min(auth, 0.6)
 
 
 def score_jobs(profile: Profile, jobs: list[Job], prefs: Preferences) -> tuple[list[Match], dict[str, int]]:
@@ -182,7 +204,7 @@ def score_jobs(profile: Profile, jobs: list[Job], prefs: Preferences) -> tuple[l
     kept: list[Job] = []
     facts_by_id: dict[str, JobFacts] = {}
     for job in jobs:
-        facts = read_job(job)
+        facts = read_job(job, prefs)
         reason = excluded(job, facts, prefs)
         if reason:
             filtered[reason] = filtered.get(reason, 0) + 1
@@ -221,10 +243,14 @@ def score_jobs(profile: Profile, jobs: list[Job], prefs: Preferences) -> tuple[l
             parts.append((0.5, title_score))
             if title_score >= 0.99:
                 reasons.insert(0, "title matches what you're looking for")
-        location_score = _location_fit(job, prefs)
+        location_score = _location_fit(job, prefs, facts)
         if location_score is not None:
             parts.append((0.25, location_score))
-            if location_score < 0.5:
+            if facts.work_authorization == "sponsors":
+                reasons.append("says it sponsors visas or helps with relocation")
+            elif facts.work_authorization == "unclear":
+                reasons.append("outside your work-permit countries; doesn't say if it sponsors visas")
+            elif location_score < 0.5:
                 reasons.append(f"location '{job.location or 'unknown'}' isn't in your list")
         if prefs.keywords:
             text = job.text.lower()

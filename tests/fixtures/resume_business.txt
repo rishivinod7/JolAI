@@ -1,0 +1,35 @@
+Alex Example
+alex@example.com  | +00 0000 0000 | linkedin.com/in/example
+
+PROFILE
+• MBA graduate with 3+ years of experience translating business requirements into data-driven solutions
+• Stakeholder management across 20+ key APAC accounts
+
+EDUCATION
+Example Business School                 Hong Kong SAR, China
+Master of Business Administration                              Aug 2025 - Sep 2026
+Example University              Scotland, United Kingdom
+BSc. (Hons) in Computer Science                               Sep 2017 - Jun 2021
+
+EXPERIENCE
+Travel Retail & Corporate Business APAC Intern | Fashion Co                                        Hong Kong SAR | Apr 2026 - Sep 2026
+• Coordinated a Business Intelligence project with an external agency across 20+ travel retail accounts
+• Analyzed sales & OPEX data and developed a Power BI dashboard
+• Managed the Procure-to-Pay (P2P) process via SAP Concur and shipment logistics
+• Led supplier sourcing & vendor management for a new retail concept
+• Created proposal decks for corporate partnerships with airlines and insurers
+• Onboarded and trained an incoming intern on operational procedures
+Senior Associate – UX Design | Services Co                                          India | Apr 2024 - Jan 2025
+• Translated business requirements into Power BI dashboard designs across 150+ workstreams
+• Led interactive UX workshops for teams of up to 20
+Associate Software Developer | Services Co                                                                Apr 2022 - Apr 2024
+• Led a cross-team process improvement initiative, standardizing delivery across 100+ reports
+UI Design Consultant | Startup Co                            United Kingdom | Jul 2021 - Sep 2021
+• Conducted competitive analysis and iterative prototyping with stakeholder feedback
+
+PROJECTS
+• Side App | Jun 2026: Built a music discovery app with AI tools
+
+Work Permits Hong Kong SAR, India (Citizen)
+Technical Power BI, Figma, Python, SQL, MS Excel
+Core Skills Data Visualization, Requirements Analysis, UX, Project Coordination, Stakeholder Management
