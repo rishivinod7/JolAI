@@ -22,12 +22,27 @@ per search.
 
 You need Python 3.10 or newer.
 
+Mac / Linux:
+
 ```bash
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e .
 jolai ui
 ```
+
+Windows (PowerShell):
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -e .
+jolai ui
+```
+
+If PowerShell says "running scripts is disabled on this system", run
+`Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned` once, then activate again.
+Your prompt shows `(.venv)` when it's active. Activate again in each new terminal before `jolai ui`.
 
 Your browser opens JolAI. Then:
 1. Upload your resume (PDF, Word or text) in the sidebar.
