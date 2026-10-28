@@ -177,6 +177,16 @@ if not resume_path or not Path(resume_path).exists():
 resume_text = read_resume_text(resume_path)
 jobs_file = out_dir / "jobs.json"
 
+# Shown before any search, so you can check the resume was read correctly first.
+resume_profile = pipeline.read_profile(config, resume_text=resume_text)
+with st.expander(f"What JolAI read from your resume: ~{resume_profile.years_experience:g} years, "
+                 f"{LEVELS[resume_profile.level]} level, {len(resume_profile.skills)} skills",
+                 expanded=not jobs_file.exists()):
+    st.markdown("**Titles:** " + (", ".join(resume_profile.titles) or "none found"))
+    st.markdown("**Skills:** " + (chips(sorted(resume_profile.skills), "ok") or "none found"),
+                unsafe_allow_html=True)
+    st.caption("Something missing or wrong? Fix it under 'Fix what was read from your resume' in the sidebar.")
+
 top_left, top_right = st.columns([3, 1])
 with top_right:
     search_clicked = st.button("🔍 Search for jobs", type="primary", width="stretch")
@@ -204,12 +214,6 @@ profile, matches, filtered, total = cached_rank(resume_text, jobs_file.stat().st
 # Apply any AI answers already paid for (free: read from results/ai_cache.json, no API call).
 ai_cfg = config.setdefault("llm", {})
 matches = pipeline.ai_rerank(list(matches), profile, config, cache_only=True)
-
-with st.expander(f"What JolAI read from your resume: ~{profile.years_experience:g} years, "
-                 f"{LEVELS[profile.level]} level, {len(profile.skills)} skills"):
-    st.markdown("**Titles:** " + (", ".join(profile.titles) or "none found"))
-    st.markdown(chips(sorted(profile.skills), "ok") or "No skills found", unsafe_allow_html=True)
-    st.caption("Something wrong? Fix it under 'Fix what was read from your resume' in the sidebar.")
 
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Jobs downloaded", total)

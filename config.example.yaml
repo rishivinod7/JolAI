@@ -41,7 +41,7 @@ sources:
   ashby: []
   # Any careers page that publishes schema.org JobPosting data (most do, for Google Jobs).
   career_pages: []
-  # search_terms: ["customer success", "operations"]   # defaults to your first 3 titles
+  # search_terms: ["customer success", "operations"]   # defaults to your titles (up to 6)
 
 llm:
   # Optional AI double-check of your top matches. Off unless you click the button in the UI

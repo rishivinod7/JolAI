@@ -260,3 +260,16 @@ def test_ui_renders(tmp_path, monkeypatch):
     next(b for b in app.button if b.label == "⭐ Save").click().run()
     assert not app.exception
     assert "saved" in (tmp_path / "tracker.json").read_text()
+
+
+def test_ui_shows_resume_before_any_search(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+
+    config = tmp_path / "config.yaml"
+    config.write_text(f"resume: {FIX / 'resume_nontech.txt'}\noutput:\n  dir: {tmp_path}\n")
+    monkeypatch.setattr("sys.argv", ["ui.py", "--config", str(config)])
+    app = AppTest.from_file(str(Path(__file__).parents[1] / "jolai" / "ui.py"), default_timeout=30).run()
+    assert not app.exception
+    assert any("What JolAI read from your resume" in e.label for e in app.expander)
+    assert any("Zendesk" in md.value for md in app.markdown)

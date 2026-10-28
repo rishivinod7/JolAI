@@ -47,11 +47,11 @@ def read_profile(config: dict, resume_path: str | Path | None = None, resume_tex
 # -- Step 2: collect jobs ----------------------------------------------------------------
 
 def search_terms(config: dict) -> list[str]:
-    """Words sent to sources that support search (Remotive). Defaults to your first 3 target titles."""
+    """Words sent to sources that support search (Remotive). Defaults to your target titles (up to 6)."""
     explicit = (config.get("sources") or {}).get("search_terms")
     if explicit:
         return list(explicit)
-    return list(((config.get("preferences") or {}).get("titles") or [])[:3])
+    return list(((config.get("preferences") or {}).get("titles") or [])[:6])
 
 
 def collect_jobs(config: dict, use_cache: bool = True, on_progress=None) -> list[Job]:
