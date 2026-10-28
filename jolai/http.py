@@ -6,6 +6,7 @@ import hashlib
 import json
 import threading
 import time
+from collections import Counter
 from pathlib import Path
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
@@ -33,6 +34,8 @@ class Fetcher:
         self._last_hit: dict[str, float] = {}
         self._robots: dict[str, RobotFileParser | None] = {}
         self._lock = threading.Lock()
+        # Real network requests per host (cache hits not counted), so API quotas can be tracked.
+        self.requests: Counter[str] = Counter()
 
     # -- public -----------------------------------------------------------------
     def get_text(self, url: str, *, check_robots: bool = False) -> str:
@@ -42,6 +45,7 @@ class Fetcher:
         if check_robots and not self.allowed(url):
             raise PermissionError(f"robots.txt disallows fetching {url}")
         self._throttle(url)
+        self._count(url)
         resp = self.session.get(url, timeout=self.timeout)
         resp.raise_for_status()
         self._cache_write(url, resp.text)
@@ -57,6 +61,7 @@ class Fetcher:
         if cached is not None:
             return json.loads(cached)
         self._throttle(url)
+        self._count(url)
         resp = self.session.post(url, json=body, timeout=self.timeout)
         resp.raise_for_status()
         self._cache_write(cache_key, resp.text)
@@ -81,6 +86,10 @@ class Fetcher:
         return parser is None or parser.can_fetch(USER_AGENT, url)
 
     # -- internals --------------------------------------------------------------
+    def _count(self, url: str) -> None:
+        with self._lock:
+            self.requests[urlparse(url).netloc] += 1
+
     def _throttle(self, url: str) -> None:
         host = urlparse(url).netloc
         with self._lock:

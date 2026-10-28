@@ -56,6 +56,10 @@ In the UI, open **Where to look**, pick the countries or places, and paste the k
 in `config.yaml`, which is git-ignored. Each search runs once per job title (up to 6) per place.
 These sites only return a short summary of each job, so their scores lean more on the title.
 
+Jooble keys come with a limit (500 requests by default). JolAI counts every request, searches
+only your first 4 titles on Jooble (change this under **Where to look**), reuses results for
+6 hours, and stops before the limit. The Stats tab shows how many you've used.
+
 **Add companies you like:**
 
 1. Open its careers page and look at the address. If it's `boards.greenhouse.io/acme`,

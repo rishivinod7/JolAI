@@ -539,3 +539,40 @@ def test_ui_filtered_tab_and_stats(tmp_path, monkeypatch):
     assert sorted(v["status"] for v in saved.values()) == ["hidden", "rescued"]
     assert any(t.label.startswith("🚫 Filtered out (5)") for t in app.tabs)
     assert any("Coverage" in s.value for s in app.subheader)
+
+
+def test_jooble_request_budget(tmp_path, monkeypatch):
+    from jolai import pipeline, sources
+    from jolai.usage import Usage
+
+    cfg = {"jooble": {"locations": ["Hong Kong", "India", "Singapore"], "api_key": "K"}}
+    titles = ["Business Analyst", "Product Strategy", "Project Coordinator", "Partnerships Manager",
+              "Strategy Associate", "Product Operations"]
+    labels = [lb for lb, _, _ in sources.plan_tasks(cfg, titles)]
+    assert len(labels) == 12  # 4 titles (max_terms default) x 3 places, not 18
+    assert labels[:3] == ["jooble:Hong Kong:Business Analyst", "jooble:India:Business Analyst",
+                          "jooble:Singapore:Business Analyst"]
+
+    cfg["jooble"]["remaining_requests"] = 5  # budget short: first titles across every place come first
+    assert [lb for lb, _, _ in sources.plan_tasks(cfg, titles)] == labels[:5]
+    cfg["jooble"]["remaining_requests"] = 0
+    (label, task, _), = sources.plan_tasks(cfg, titles)
+    with pytest.raises(sources.MissingKey, match="request limit reached"):
+        task(None, None)
+
+    # collect_jobs records real requests and passes the remaining budget on.
+    seen = {}
+
+    def fake_collect(fetcher, source_cfg, terms, on_result=None, workers=8):
+        seen["remaining"] = source_cfg["jooble"]["remaining_requests"]
+        fetcher.requests["jooble.org"] += 7
+        fetcher.requests["boards-api.greenhouse.io"] += 3  # not a metered service
+        return []
+
+    monkeypatch.setattr(sources, "collect", fake_collect)
+    config = {"output": {"dir": str(tmp_path)}, "sources": {"jooble": {"locations": ["Hong Kong"], "api_key": "K"}}}
+    pipeline.collect_jobs(config)
+    pipeline.collect_jobs(config)
+    usage = Usage(tmp_path / "api_usage.json")
+    assert seen["remaining"] == 493 and usage.used("jooble") == 14 and usage.this_month("jooble") == 14
+    assert "greenhouse" not in usage.data and "remaining_requests" not in config["sources"]["jooble"]

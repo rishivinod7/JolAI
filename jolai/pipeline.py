@@ -26,6 +26,7 @@ from .config import DEFAULT_SOURCES, describe_preferences, preferences_from
 from .http import Fetcher
 from .matcher import Rejected, score_jobs
 from .models import Job, Match, Profile
+from .usage import Usage, limit_for
 from .resume import build_profile, read_resume_text
 
 
@@ -64,14 +65,21 @@ def collect_jobs(config: dict, use_cache: bool = True, on_progress=None) -> list
     """
     fetcher = Fetcher(cache_ttl=6 * 3600 if use_cache else 0)
     results: dict[str, dict] = {}
+    usage = Usage(results_dir(config) / "api_usage.json")
+    source_cfg = json.loads(json.dumps(config.get("sources") or DEFAULT_SOURCES))  # copy; we add budget info
+    jb = source_cfg.get("jooble")
+    if isinstance(jb, dict) and limit_for("jooble", jb):
+        jb["remaining_requests"] = max(0, limit_for("jooble", jb) - usage.used("jooble"))
 
     def record(label, count, error):
         results[label] = {"error": str(error)} if error else {"count": count}
         if on_progress:
             on_progress(label, count, error)
 
-    jobs = sources.collect(fetcher, config.get("sources") or DEFAULT_SOURCES, search_terms(config),
-                           on_result=record)
+    try:
+        jobs = sources.collect(fetcher, source_cfg, search_terms(config), on_result=record)
+    finally:
+        usage.add_requests(fetcher.requests)
     out = results_dir(config)
     out.mkdir(parents=True, exist_ok=True)
     previous = {j.id for j in load_jobs(out / "jobs.json")}

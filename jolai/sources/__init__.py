@@ -63,11 +63,23 @@ def _search_api_tasks(sources: dict, terms: list[str]) -> list[tuple[str, callab
         except MissingKey as exc:
             tasks.append(("jooble", _fail(str(exc)), None))
         else:
-            for location in jb["locations"]:
-                for term in terms:
-                    tasks.append((f"jooble:{location}:{term or 'all'}", jooble,
-                                  {"location": location, "keywords": term, "api_key": key,
-                                   "pages": jb.get("pages", 1)}))
+            # Jooble keys have a request quota, so use fewer titles (max_terms, default 4) and stop
+            # at the remaining budget. Titles go in the outer loop, so if the budget runs short every
+            # place still gets your first titles.
+            pages = int(jb.get("pages", 1))
+            remaining = jb.get("remaining_requests")  # set by pipeline.collect_jobs from api_usage.json
+            planned = []
+            for term in terms[: int(jb.get("max_terms", 4))]:
+                for location in jb["locations"]:
+                    planned.append((f"jooble:{location}:{term or 'all'}", jooble,
+                                    {"location": location, "keywords": term, "api_key": key, "pages": pages}))
+            if remaining is not None and remaining < len(planned) * pages:
+                planned = planned[: max(0, remaining // pages)]
+                if not planned:
+                    tasks.append(("jooble", _fail("Jooble request limit reached. Ask Jooble for more requests "
+                                                  "(reply to their email), or raise jooble.request_limit "
+                                                  "if they already did."), None))
+            tasks += planned
     return tasks
 
 

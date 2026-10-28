@@ -27,6 +27,7 @@ from jolai.config import load_config, save_config
 from jolai.filters import technical_label
 from jolai.models import pay_text
 from jolai.sources.search_apis import ADZUNA_COUNTRIES
+from jolai.usage import Usage, limit_for
 from jolai.resume import LEVELS, read_resume_text
 
 # Rough prices in $ per million tokens (input, output), for the AI cost estimate only.
@@ -194,7 +195,15 @@ with st.sidebar:
                                               placeholder="Hong Kong, India, Singapore"))
         if jb["locations"]:
             jb["api_key"] = st.text_input("Jooble API key", jb.get("api_key", ""), type="password")
-            st.caption("Free key: [jooble.org/api/about](https://jooble.org/api/about)")
+            jb["max_terms"] = st.slider("Job titles to search on Jooble", 1, 6, int(jb.get("max_terms", 4)),
+                                        help="Each title is one request per place. Your first titles are used.")
+            per_search = jb["max_terms"] * len(jb["locations"]) * int(jb.get("pages", 1))
+            limit = limit_for("jooble", jb)
+            used = Usage(out_dir / "api_usage.json").used("jooble")
+            st.caption(f"Each search uses up to {per_search} Jooble requests"
+                       + (f"; {used} of {limit} used so far." if limit else ".")
+                       + " Repeat searches within 6 hours are free (cached). "
+                       "Free key: [jooble.org/api/about](https://jooble.org/api/about)")
         st.caption("Each search engine runs once per job title (up to 6 titles) per place, so more titles "
                    "and places mean a slower search.")
         st.divider()
@@ -496,6 +505,16 @@ with tab_stats:
         if last_run:
             st.caption(f"Last search {last_run['at'].replace('T', ' ')}: {last_run['total']} jobs, "
                        f"{last_run['new']} new.")
+    usage = Usage(out_dir / "api_usage.json")
+    jb_cfg = src.get("jooble") or {}
+    if usage.used("jooble") or jb_cfg.get("locations"):
+        limit = limit_for("jooble", jb_cfg)
+        used = usage.used("jooble")
+        st.progress(min(1.0, used / limit) if limit else 0.0,
+                    text=f"Jooble requests used: {used} of {limit}" if limit else f"Jooble requests used: {used}")
+        if limit and used >= 0.8 * limit:
+            st.warning("Jooble requests are running low. Reply to Jooble's email to ask for more, "
+                       "or lower 'Job titles to search on Jooble'.")
     if len(runs) > 1:
         with st.expander("Search history"):
             st.dataframe([{"when": r["at"].replace("T", " "), "jobs": r["total"], "new": r["new"]}

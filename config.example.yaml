@@ -46,6 +46,8 @@ sources:
     locations: []           # e.g. [Hong Kong, India, Singapore]
     api_key: ""
     pages: 1
+    max_terms: 4            # titles searched on Jooble (each = 1 request per place)
+    request_limit: 500      # Jooble's default quota per key; the tool stops before going over
   # Aggregators (free, no setup)
   remotive: true            # remote jobs across many fields, including non-technical
   remoteok: true
