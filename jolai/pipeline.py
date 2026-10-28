@@ -9,19 +9,22 @@
                                           │
                  (optional) ai_rerank ──► Claude double-checks the top few
 
-Your choices about individual jobs (saved, applied, hidden) live in ``Tracker``.
+Your choices about individual jobs (saved, applied, hidden, "filter was wrong") live in
+``Tracker``. Each search is logged in results/runs.jsonl. ``stats.py`` turns both into the
+numbers on the Stats tab.
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import fields
+from dataclasses import dataclass, field, fields
+from datetime import datetime
 from pathlib import Path
 
 from . import sources
 from .config import DEFAULT_SOURCES, describe_preferences, preferences_from
 from .http import Fetcher
-from .matcher import score_jobs
+from .matcher import Rejected, score_jobs
 from .models import Job, Match, Profile
 from .resume import build_profile, read_resume_text
 
@@ -60,12 +63,32 @@ def collect_jobs(config: dict, use_cache: bool = True, on_progress=None) -> list
     ``on_progress(label, count, error)`` is called once per source as it finishes.
     """
     fetcher = Fetcher(cache_ttl=6 * 3600 if use_cache else 0)
+    results: dict[str, dict] = {}
+
+    def record(label, count, error):
+        results[label] = {"error": str(error)} if error else {"count": count}
+        if on_progress:
+            on_progress(label, count, error)
+
     jobs = sources.collect(fetcher, config.get("sources") or DEFAULT_SOURCES, search_terms(config),
-                           on_result=on_progress)
+                           on_result=record)
     out = results_dir(config)
     out.mkdir(parents=True, exist_ok=True)
+    previous = {j.id for j in load_jobs(out / "jobs.json")}
     (out / "jobs.json").write_text(json.dumps([vars(j) for j in jobs], indent=2), encoding="utf-8")
+    run = {"at": datetime.now().isoformat(timespec="seconds"), "total": len(jobs),
+           "new": sum(1 for j in jobs if j.id not in previous), "sources": results}
+    with (out / "runs.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(run) + "\n")
     return jobs
+
+
+def load_runs(config: dict) -> list[dict]:
+    """Every logged search, oldest first."""
+    path = results_dir(config) / "runs.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def load_jobs(path: str | Path) -> list[Job]:
@@ -83,6 +106,20 @@ def load_jobs(path: str | Path) -> list[Job]:
 def rank(profile: Profile, jobs: list[Job], config: dict) -> tuple[list[Match], dict[str, int]]:
     """Drop jobs that break your rules and score the rest. Returns (matches, why-filtered counts)."""
     return score_jobs(profile, jobs, preferences_from(config))
+
+
+@dataclass
+class RankResult:
+    matches: list[Match]
+    filtered: dict[str, int]  # filter reason -> how many jobs it removed
+    rejected: list[Rejected] = field(default_factory=list)  # the removed jobs themselves
+
+
+def rank_all(profile: Profile, jobs: list[Job], config: dict, keep_ids: set[str] | None = None) -> RankResult:
+    """Like ``rank``, but also returns the filtered-out jobs, and keeps jobs you rescued from a filter."""
+    rejected: list[Rejected] = []
+    matches, filtered = score_jobs(profile, jobs, preferences_from(config), keep_ids=keep_ids, rejected=rejected)
+    return RankResult(matches, filtered, rejected)
 
 
 # -- Step 4 (optional): AI double-check ----------------------------------------------------
@@ -105,9 +142,19 @@ def ai_rerank(matches: list[Match], profile: Profile, config: dict, cache_only: 
 # -- Your decisions about jobs -----------------------------------------------------------
 
 class Tracker:
-    """Remembers which jobs you saved, applied to or hid, in results/tracker.json."""
+    """Remembers what you did with each job, in results/tracker.json.
 
-    STATUSES = ("saved", "applied", "hidden")
+    Statuses:
+      saved     you starred it
+      applied   you applied; ``outcome`` records what happened next
+      hidden    not for you; ``reason`` says why (feeds the Stats tab)
+      rescued   a filter hid it but you said it's a good job; ``reason`` is the filter it failed
+    """
+
+    STATUSES = ("saved", "applied", "hidden", "rescued")
+    HIDE_REASONS = ("Not interested", "Wrong field", "Too senior", "Too junior", "Location or visa", "Pay",
+                    "Already applied elsewhere", "Other")
+    OUTCOMES = ("Waiting", "Replied", "Interview", "Offer", "Rejected")
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
@@ -116,11 +163,39 @@ class Tracker:
     def status(self, job_id: str) -> str | None:
         return self.data.get(job_id, {}).get("status")
 
-    def set(self, match: Match, status: str | None) -> None:
+    def get(self, job_id: str) -> dict:
+        return self.data.get(job_id, {})
+
+    def ids(self, status: str) -> set[str]:
+        return {jid for jid, v in self.data.items() if v.get("status") == status}
+
+    def set(self, job: Job | Match, status: str | None, reason: str | None = None,
+            score: float | None = None) -> None:
+        """Record a decision. ``score`` is the job's score at the time, used to judge the ranking."""
+        if isinstance(job, Match):
+            score = job.score if score is None else score
+            job = job.job
         if status is None:
-            self.data.pop(match.job.id, None)
+            self.data.pop(job.id, None)
         else:
-            j = match.job
-            self.data[match.job.id] = {"status": status, "title": j.title, "company": j.company, "url": j.url}
+            now = datetime.now().isoformat(timespec="seconds")
+            entry = {"status": status, "title": job.title, "company": job.company, "url": job.url,
+                     "source": job.source, "at": now}
+            if reason:
+                entry["reason"] = reason
+            if score is not None:
+                entry["score"] = score
+            if status == "applied":
+                entry["outcome"] = self.data.get(job.id, {}).get("outcome", "Waiting")
+            self.data[job.id] = entry
+        self._save()
+
+    def set_outcome(self, job_id: str, outcome: str) -> None:
+        if job_id in self.data:
+            self.data[job_id]["outcome"] = outcome
+            self.data[job_id]["outcome_at"] = datetime.now().isoformat(timespec="seconds")
+            self._save()
+
+    def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(self.data, indent=2), encoding="utf-8")

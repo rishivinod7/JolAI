@@ -434,3 +434,108 @@ def test_search_api_tasks_and_ranking(monkeypatch):
     assert {m.job.title for m in matches} == {"Business Analyst - Partnerships", "Strategic Partnerships Manager"}
     assert all(m.facts.work_authorization == "ok" for m in matches)  # India and Hong Kong
     assert filtered == {"needs a language you don't speak": 2}  # Hindi and Cantonese
+
+
+# ---- filtered-out review, tracker, stats -------------------------------------------------
+
+def _business_config(tmp_path):
+    return {"resume": str(FIX / "resume_business.txt"), "preferences": dict(BUSINESS_PREFS),
+            "output": {"dir": str(tmp_path)}}
+
+
+def test_rescue_brings_a_filtered_job_back(tmp_path):
+    from jolai import pipeline
+
+    config = _business_config(tmp_path)
+    profile = pipeline.read_profile(config)
+    jobs = pipeline.load_jobs(FIX / "jobs_business.json")
+    first = pipeline.rank_all(profile, jobs, config)
+    assert len(first.rejected) == sum(first.filtered.values()) == 6
+    cantonese = next(r for r in first.rejected if r.job.company == "PearlTrade")
+    assert cantonese.reason == "needs a language you don't speak"
+
+    tracker = pipeline.Tracker(tmp_path / "tracker.json")
+    tracker.set(cantonese.job, "rescued", reason=cantonese.reason)
+    second = pipeline.rank_all(profile, jobs, config, keep_ids=tracker.ids("rescued"))
+    kept = next(m for m in second.matches if m.job.company == "PearlTrade")
+    assert kept.overridden == "needs a language you don't speak"
+    assert len(second.rejected) == 5 and "needs a language you don't speak" not in second.filtered
+
+
+def test_tracker_reasons_outcomes_and_stats(tmp_path):
+    from datetime import date
+
+    from jolai import pipeline, stats
+
+    config = _business_config(tmp_path)
+    profile = pipeline.read_profile(config)
+    result = pipeline.rank_all(profile, pipeline.load_jobs(FIX / "jobs_business.json"), config)
+    tracker = pipeline.Tracker(tmp_path / "tracker.json")
+    best, second, worst = result.matches[0], result.matches[1], result.matches[-1]
+    tracker.set(best, "applied")
+    tracker.set_outcome(best.job.id, "Interview")
+    tracker.set(second, "saved")
+    tracker.set(worst, "hidden", reason="Too senior")
+    rescued = result.rejected[0]
+    tracker.set(rescued.job, "rescued", reason=rescued.reason)
+
+    data = pipeline.Tracker(tmp_path / "tracker.json").data  # reload from disk
+    assert data[best.job.id]["outcome"] == "Interview" and data[best.job.id]["score"] == best.score
+    assert dict(stats.funnel(data)) == {"Saved": 2, "Applied": 1, "Heard back": 1, "Interview": 1, "Offer": 0}
+    assert stats.hide_reasons(data) == [("Too senior", 1)]
+
+    quality = stats.ranking_quality(result.matches, data)
+    assert quality["in_top_10"] == 2 and quality["avg_score_liked"] > quality["avg_score_hidden"]
+
+    rows = {r["filter"]: r for r in stats.filter_rows(result.filtered, data)}
+    assert rows[rescued.reason]["you said wrong"] == 1
+    assert 0 < rows[rescued.reason]["wrong %"] <= 50
+
+    weeks = stats.applications_per_week(data, today=date.today())
+    assert len(weeks) == 8 and weeks[-1][1] == 1
+
+
+def test_source_summary_and_run_log(tmp_path, monkeypatch):
+    from jolai import pipeline, sources, stats
+
+    def fake_collect(fetcher, cfg, terms, on_result=None, workers=8):
+        on_result("jooble:Hong Kong:analyst", 2, None)
+        on_result("adzuna", None, RuntimeError("Adzuna needs an app_id"))
+        return pipeline.load_jobs(FIX / "jobs_business.json")[:2]
+
+    monkeypatch.setattr(sources, "collect", fake_collect)
+    config = {"output": {"dir": str(tmp_path)}}
+    jobs = pipeline.collect_jobs(config)
+    pipeline.collect_jobs(config)
+    runs = pipeline.load_runs(config)
+    assert [r["new"] for r in runs] == [2, 0] and runs[-1]["sources"]["adzuna"]["error"].startswith("Adzuna")
+
+    rows = {r["source"]: r for r in stats.source_summary(jobs, runs[-1])}
+    assert rows["adzuna"]["failed"] == 1 and "app_id" in rows["adzuna"]["errors"]
+    assert rows["jooble"]["searches"] == 1
+
+
+def test_ui_filtered_tab_and_stats(tmp_path, monkeypatch):
+    pytest.importorskip("streamlit")
+    import shutil
+
+    import yaml
+    from streamlit.testing.v1 import AppTest
+
+    shutil.copy(FIX / "jobs_business.json", tmp_path / "jobs.json")
+    config = tmp_path / "config.yaml"
+    config.write_text(yaml.safe_dump({**_business_config(tmp_path), "sources": {"remotive": True}}))
+    monkeypatch.setattr("sys.argv", ["ui.py", "--config", str(config)])
+    app = AppTest.from_file(str(Path(__file__).parents[1] / "jolai" / "ui.py"), default_timeout=30).run()
+    assert not app.exception
+    assert any(t.label.startswith("🚫 Filtered out (6)") for t in app.tabs)
+
+    # Hide a match with a reason, then rescue a filtered-out job.
+    next(b for b in app.button if b.label == "Too senior").click().run()
+    assert not app.exception
+    next(b for b in app.button if b.label == "👍 Good job, keep it").click().run()
+    assert not app.exception
+    saved = json.loads((tmp_path / "tracker.json").read_text())
+    assert sorted(v["status"] for v in saved.values()) == ["hidden", "rescued"]
+    assert any(t.label.startswith("🚫 Filtered out (5)") for t in app.tabs)
+    assert any("Coverage" in s.value for s in app.subheader)

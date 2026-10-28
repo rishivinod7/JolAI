@@ -198,16 +198,37 @@ def _location_fit(job: Job, prefs: Preferences, facts: JobFacts) -> float | None
     return 0.15 if auth is None else min(auth, 0.6)
 
 
-def score_jobs(profile: Profile, jobs: list[Job], prefs: Preferences) -> tuple[list[Match], dict[str, int]]:
-    """Return matches sorted best-first, plus a count of why jobs were filtered out."""
+@dataclass
+class Rejected:
+    """A job a filter removed, kept so you can check the filter got it right."""
+
+    job: Job
+    facts: JobFacts
+    reason: str
+
+
+def score_jobs(profile: Profile, jobs: list[Job], prefs: Preferences, keep_ids: set[str] | None = None,
+               rejected: list[Rejected] | None = None) -> tuple[list[Match], dict[str, int]]:
+    """Return matches sorted best-first, plus a count of why jobs were filtered out.
+
+    ``keep_ids``: jobs you said a filter was wrong about. They skip the filters and are scored
+    like any other job, with ``Match.overridden`` set to the filter they would have failed.
+    ``rejected``: if given, every filtered-out job is appended to it with its reason.
+    """
     filtered: dict[str, int] = {}
     kept: list[Job] = []
     facts_by_id: dict[str, JobFacts] = {}
+    overridden: dict[str, str] = {}
     for job in jobs:
         facts = read_job(job, prefs)
         reason = excluded(job, facts, prefs)
+        if reason and keep_ids and job.id in keep_ids:
+            overridden[job.id] = reason
+            reason = None
         if reason:
             filtered[reason] = filtered.get(reason, 0) + 1
+            if rejected is not None:
+                rejected.append(Rejected(job, facts, reason))
         else:
             kept.append(job)
             facts_by_id[job.id] = facts
@@ -273,6 +294,6 @@ def score_jobs(profile: Profile, jobs: list[Job], prefs: Preferences) -> tuple[l
             reasons.append(f"{', '.join(facts.languages_optional)} is a plus, not required")
         matches.append(Match(job=job, score=round(overall * 100, 1), chance=round(chance * 100, 1),
                              want=round(want * 100, 1), matched_skills=matched, missing_skills=missing,
-                             reasons=reasons, facts=facts))
+                             reasons=reasons, facts=facts, overridden=overridden.get(job.id)))
     matches.sort(key=lambda m: m.score, reverse=True)
     return matches, filtered

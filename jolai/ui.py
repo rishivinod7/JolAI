@@ -22,7 +22,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from jolai import pipeline
+from jolai import pipeline, stats
 from jolai.config import load_config, save_config
 from jolai.filters import technical_label
 from jolai.models import pay_text
@@ -32,6 +32,7 @@ from jolai.resume import LEVELS, read_resume_text
 # Rough prices in $ per million tokens (input, output), for the AI cost estimate only.
 MODEL_PRICES = {"claude-opus-5-5": (4.0, 20.0), "claude-sonnet-5-5": (2.0, 10.0), "claude-haiku-5-5": (0.10, 0.50)}
 PAGE_SIZE = 20
+BAR_COLOR = "#2a78d6"  # one hue for every bar: these charts show counts, not categories
 
 CSS = """
 <style>
@@ -77,12 +78,30 @@ tracker = pipeline.Tracker(out_dir / "tracker.json")
 
 
 @st.cache_data(show_spinner=False)
-def cached_rank(resume_text: str, jobs_mtime: float, config_snapshot: dict):
-    """Re-score only when the resume, the downloaded jobs or the settings change."""
+def cached_rank(resume_text: str, jobs_mtime: float, config_snapshot: dict, keep_ids: tuple[str, ...]):
+    """Re-score only when the resume, the downloaded jobs, the settings or your filter overrides change."""
     profile = pipeline.read_profile(config_snapshot, resume_text=resume_text)
     jobs = pipeline.load_jobs(pipeline.results_dir(config_snapshot) / "jobs.json")
-    matches, filtered = pipeline.rank(profile, jobs, config_snapshot)
-    return profile, matches, filtered, len(jobs)
+    result = pipeline.rank_all(profile, jobs, config_snapshot, keep_ids=set(keep_ids))
+    return profile, result, jobs
+
+
+def bar_chart(rows: list[tuple[str, int]], height_per_bar: int = 30):
+    """Horizontal bars in the given order, one colour, with the count in each label ("Saved · 3").
+
+    The count goes in the axis label (not on the bar) because axis labels follow the light/dark theme.
+    """
+    import altair as alt
+    import pandas as pd
+
+    data = pd.DataFrame([(f"{label} · {value}", label, value) for label, value in rows],
+                        columns=["axis", "label", "value"])
+    chart = alt.Chart(data).mark_bar(color=BAR_COLOR, cornerRadiusEnd=4, height=height_per_bar * 0.6).encode(
+        y=alt.Y("axis:N", sort=None, title=None, axis=alt.Axis(labelLimit=240, ticks=False, domain=False)),
+        x=alt.X("value:Q", title=None, axis=None),
+        tooltip=[alt.Tooltip("label:N", title=""), alt.Tooltip("value:Q", title="count")],
+    ).properties(height=max(60, height_per_bar * len(rows)))
+    st.altair_chart(chart.configure_view(stroke=None), width="stretch")
 
 
 # ---------------------------------------------------------------------------------------
@@ -245,7 +264,9 @@ if search_clicked:
 if not jobs_file.exists():
     st.stop()
 
-profile, matches, filtered, total = cached_rank(resume_text, jobs_file.stat().st_mtime, config)
+keep_ids = tuple(sorted(tracker.ids("rescued")))
+profile, ranked, all_jobs = cached_rank(resume_text, jobs_file.stat().st_mtime, config, keep_ids)
+matches, filtered, rejected, total = ranked.matches, ranked.filtered, ranked.rejected, len(all_jobs)
 
 # Apply any AI answers already paid for (free: read from results/ai_cache.json, no API call).
 ai_cfg = config.setdefault("llm", {})
@@ -257,7 +278,8 @@ m2.metric("Filtered out", sum(filtered.values()))
 m3.metric("Matches", len(matches))
 m4.metric("Saved", sum(1 for v in tracker.data.values() if v["status"] == "saved"))
 if filtered:
-    st.caption("Filtered out: " + " · ".join(f"{n} {why}" for why, n in sorted(filtered.items(), key=lambda x: -x[1])))
+    st.caption("Filtered out: " + " · ".join(f"{n} {why}" for why, n in sorted(filtered.items(), key=lambda x: -x[1]))
+               + ". Check them in the **Filtered out** tab.")
 
 # -- AI double-check ---------------------------------------------------------------------
 with st.expander("✨ Double-check the top matches with AI (optional, costs a little)"):
@@ -291,7 +313,28 @@ with st.expander("✨ Double-check the top matches with AI (optional, costs a li
         st.rerun()
 
 # -- Job lists ---------------------------------------------------------------------------
-tab_matches, tab_saved, tab_applied, tab_hidden = st.tabs(["Matches", "⭐ Saved", "📨 Applied", "🙈 Hidden"])
+tab_matches, tab_saved, tab_applied, tab_filtered, tab_hidden, tab_stats = st.tabs(
+    ["Matches", "⭐ Saved", "📨 Applied", f"🚫 Filtered out ({len(rejected)})", "🙈 Hidden", "📊 Stats"])
+
+
+def fact_chips(f) -> str:
+    """Badges for what was read from a posting: technical level, seniority, years, visa, languages."""
+    badges = [f"{technical_label(f.technical)} technical", f"{LEVELS[f.level]} level"]
+    if f.years_required:
+        badges.append(f"asks {f.years_required}+ yrs")
+    auth_badge = {"ok": ("✓ you can work here", "ok"), "sponsors": ("sponsors visas", "ok"),
+                  "unclear": ("visa sponsorship unclear", "warn")}.get(f.work_authorization or "")
+    warn = [f"needs {lang}" for lang in f.languages_required] + [f"{lang} a plus" for lang in f.languages_optional]
+    auth_html = chips([auth_badge[0]], auth_badge[1]) if auth_badge else ""
+    return chips(badges) + auth_html + chips(warn, "warn")
+
+
+def job_meta(j) -> str:
+    pay = f" · {pay_text(j)}" if pay_text(j) else ""
+    summary = " (summary only, open the job for details)" if j.source in ("adzuna", "jooble") else ""
+    remote = " · remote" if j.remote and "remote" not in j.location.lower() else ""
+    return (f'<div class="meta">{html.escape(j.company)} · {html.escape(j.location or "location n/a")}'
+            f'{remote}{pay} · via {j.source}{summary}</div>')
 
 
 def job_card(m, key_prefix: str) -> None:
@@ -304,18 +347,9 @@ def job_card(m, key_prefix: str) -> None:
         left.caption(f"chance {m.chance:.0f}  \nwant {m.want:.0f}")
         with right:
             st.markdown(f"#### [{j.title}]({j.url})")
-            pay = f" · {pay_text(j)}" if pay_text(j) else ""
-            st.markdown(f'<div class="meta">{html.escape(j.company)} · {html.escape(j.location or "location n/a")}'
-                        f'{" · remote" if j.remote and "remote" not in j.location.lower() else ""}{pay} · via {j.source}{" (summary only, open the job for details)" if j.source in ("adzuna", "jooble") else ""}</div>', unsafe_allow_html=True)
-            badges = [f"{technical_label(f.technical)} technical", f"{LEVELS[f.level]} level"]
-            if f.years_required:
-                badges.append(f"asks {f.years_required}+ yrs")
-            auth_badge = {"ok": ("✓ you can work here", "ok"), "sponsors": ("sponsors visas", "ok"),
-                          "unclear": ("visa sponsorship unclear", "warn")}.get(f.work_authorization or "")
-            warn = [f"needs {lang}" for lang in f.languages_required] + \
-                   [f"{lang} a plus" for lang in f.languages_optional]
-            auth_html = chips([auth_badge[0]], auth_badge[1]) if auth_badge else ""
-            st.markdown(chips(badges) + auth_html + chips(warn, "warn"), unsafe_allow_html=True)
+            st.markdown(job_meta(j), unsafe_allow_html=True)
+            override = chips([f"kept by you, despite: {m.overridden}"], "warn") if m.overridden else ""
+            st.markdown(fact_chips(f) + override, unsafe_allow_html=True)
             why = m.llm_summary or " · ".join(m.reasons[:4])
             if why:
                 st.markdown(f'<div class="why">{html.escape(why)}</div>', unsafe_allow_html=True)
@@ -323,14 +357,38 @@ def job_card(m, key_prefix: str) -> None:
                 st.markdown(chips(m.matched_skills, "ok") + chips(m.missing_skills, "miss"), unsafe_allow_html=True)
             with st.expander("Job description"):
                 st.text(j.description[:6000] + ("…" if len(j.description) > 6000 else ""))
-            b1, b2, b3, _ = st.columns([1, 1, 1, 3])
+            b1, b2, b3, b4 = st.columns([1, 1, 1, 2])
             status = tracker.status(j.id)
-            for col, name, label in [(b1, "saved", "⭐ Save"), (b2, "applied", "📨 Applied"), (b3, "hidden", "🙈 Hide")]:
+            for col, name, label in [(b1, "saved", "⭐ Save"), (b2, "applied", "📨 Applied")]:
                 active = status == name
                 if col.button(("✓ " if active else "") + label, key=f"{key_prefix}-{name}-{j.id}",
                               type="primary" if active else "secondary", width="stretch"):
                     tracker.set(m, None if active else name)
                     st.rerun()
+            if status == "hidden":
+                if b3.button("✓ 🙈 Hidden", key=f"{key_prefix}-unhide-{j.id}", type="primary", width="stretch",
+                             help=f"Reason: {tracker.get(j.id).get('reason', 'none')}. Click to unhide."):
+                    tracker.set(m, None)
+                    st.rerun()
+            else:
+                # Asking why you hide a job tells us what the filters are missing (see the Stats tab).
+                with b3.popover("🙈 Hide", width="stretch"):
+                    st.caption("Why isn't this one for you?")
+                    for reason in pipeline.Tracker.HIDE_REASONS:
+                        if st.button(reason, key=f"{key_prefix}-hide-{reason}-{j.id}", width="stretch"):
+                            tracker.set(m, "hidden", reason=reason)
+                            st.rerun()
+            if status == "applied":
+                outcomes = list(pipeline.Tracker.OUTCOMES)
+                current = tracker.get(j.id).get("outcome", "Waiting")
+                picked = b4.selectbox("What happened?", outcomes, outcomes.index(current),
+                                      key=f"{key_prefix}-outcome-{j.id}", label_visibility="collapsed")
+                if picked != current:
+                    tracker.set_outcome(j.id, picked)
+                    st.rerun()
+            elif m.overridden and b4.button("↩ Undo: let the filter hide it", key=f"{key_prefix}-unrescue-{j.id}"):
+                tracker.set(m, None)
+                st.rerun()
 
 
 with tab_matches:
@@ -374,3 +432,105 @@ for tab, status_name in [(tab_saved, "saved"), (tab_applied, "applied"), (tab_hi
             st.caption("Not in the current results (filtered out or no longer posted):")
             for jid, v in others:
                 st.markdown(f"- [{v['title']}]({v['url']}) · {v['company']}")
+
+# -- Filtered out: check the filters' work -------------------------------------------------
+with tab_filtered:
+    st.caption("Jobs your filters removed, and why. If one of these is a job you'd apply to, click "
+               "**Good job, keep it**: it moves to your matches, and the Stats tab counts it against "
+               "that filter, so you can see which filters are too strict.")
+    if not rejected:
+        st.info("No jobs filtered out.")
+    else:
+        counts = sorted(filtered.items(), key=lambda x: -x[1])
+        c1, c2 = st.columns([1, 2])
+        pick = c1.selectbox("Filter", ["All"] + [r for r, _ in counts],
+                            format_func=lambda r: f"All ({len(rejected)})" if r == "All" else f"{r} ({filtered[r]})")
+        fq = c2.text_input("Search filtered-out jobs", key="filtered-q", placeholder="title, company, place")
+        rows = [r for r in rejected if pick == "All" or r.reason == pick]
+        if fq:
+            rows = [r for r in rows if fq.lower() in r.job.text.lower()]
+        limit = st.session_state.get("filtered_shown", 30)
+        for r in rows[:limit]:
+            j = r.job
+            with st.container(border=True):
+                left, right = st.columns([5, 1.4])
+                with left:
+                    st.markdown(f"**[{j.title}]({j.url})**")
+                    st.markdown(job_meta(j), unsafe_allow_html=True)
+                    st.markdown(chips([f"hidden: {r.reason}"], "miss") + fact_chips(r.facts), unsafe_allow_html=True)
+                    with st.expander("Job description"):
+                        st.text(j.description[:6000])
+                if right.button("👍 Good job, keep it", key=f"rescue-{j.id}", width="stretch"):
+                    tracker.set(j, "rescued", reason=r.reason)
+                    st.rerun()
+        if len(rows) > limit and st.button(f"Show more ({len(rows) - limit} left)", key="filtered-more"):
+            st.session_state.filtered_shown = limit + 30
+            st.rerun()
+
+# -- Stats: is each part of the tool doing its job? ----------------------------------------
+with tab_stats:
+    runs = pipeline.load_runs(config)
+    last_run = runs[-1] if runs else None
+    quality = stats.ranking_quality(matches, tracker.data)
+    steps = stats.funnel(tracker.data)
+    applied, heard = steps[1][1], steps[2][1]
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("New jobs in last search", last_run["new"] if last_run else "–",
+              help="Jobs that weren't in the previous download.")
+    k2.metric("Applied", applied)
+    k3.metric("Heard back", f"{round(100 * heard / applied)}%" if applied else "–",
+              help="Share of applications with any outcome other than 'Waiting'.")
+    k4.metric("Saved/applied jobs in your top 10", f"{quality['in_top_10']} of {quality['ranked']}"
+              if quality["ranked"] else "–",
+              help="Of the jobs you saved, applied to or kept, how many the ranking puts in the top 10 right now.")
+
+    st.subheader("1 · Coverage: where jobs come from")
+    src_rows = stats.source_summary(all_jobs, last_run)
+    if src_rows:
+        bar_chart([(r["source"], r["jobs"]) for r in src_rows])
+        failing = [r for r in src_rows if r["failed"]]
+        for r in failing:
+            st.warning(f"**{r['source']}**: {r['failed']} of {r['searches']} searches failed in the last run. "
+                       f"{r['errors']}")
+        if last_run:
+            st.caption(f"Last search {last_run['at'].replace('T', ' ')}: {last_run['total']} jobs, "
+                       f"{last_run['new']} new.")
+    if len(runs) > 1:
+        with st.expander("Search history"):
+            st.dataframe([{"when": r["at"].replace("T", " "), "jobs": r["total"], "new": r["new"]}
+                          for r in reversed(runs)], hide_index=True, width="stretch")
+
+    st.subheader("2 · Filtering: is anything hidden by mistake?")
+    frows = stats.filter_rows(filtered, tracker.data)
+    if frows:
+        st.dataframe(frows, hide_index=True, width="stretch", column_config={
+            "wrong %": st.column_config.ProgressColumn("wrong %", min_value=0, max_value=100, format="%d%%"),
+        })
+        st.caption("'You said wrong' counts jobs you kept with **Good job, keep it**. If a filter's share "
+                   "goes above about 5%, loosen that setting in the sidebar.")
+    else:
+        st.caption("No filters are removing anything.")
+
+    st.subheader("3 · Ranking: are the right jobs at the top?")
+    r1, r2, r3 = st.columns(3)
+    r1.metric("In your top 25", f"{quality['in_top_25']} of {quality['ranked']}" if quality["ranked"] else "–")
+    r2.metric("Avg score, saved/applied", quality["avg_score_liked"] if quality["avg_score_liked"] is not None else "–")
+    r3.metric("Avg score, hidden", quality["avg_score_hidden"] if quality["avg_score_hidden"] is not None else "–",
+              help="The gap between these two should be large. If hidden jobs score as high as the ones "
+                   "you like, the ranking needs work.")
+    reasons = stats.hide_reasons(tracker.data)
+    if reasons:
+        st.markdown("**Why you hide jobs**")
+        bar_chart(reasons)
+        st.caption("Common reasons here are things a filter could catch automatically.")
+
+    st.subheader("4 · Outcomes")
+    if applied:
+        bar_chart(steps)
+        weekly = stats.applications_per_week(tracker.data)
+        st.markdown("**Applications per week**")
+        bar_chart(weekly, height_per_bar=24)
+    else:
+        st.caption("Mark jobs as 📨 Applied, then record what happened from the Applied tab. "
+                   "After about 30 applications this shows which kinds of jobs reply.")

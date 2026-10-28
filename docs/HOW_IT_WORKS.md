@@ -88,6 +88,21 @@ To keep this cheap:
 - it uses low effort
 - every answer is saved in `results/ai_cache.json`, so the same job is never paid for twice
 
+## Checking the tool (Filtered out and Stats tabs)
+
+The app checks its own work so you can see which part needs fixing:
+
+- **Filtered out tab**: every job a filter removed, and why. Click **Good job, keep it** on one
+  you'd apply to. It moves to your matches, marked "kept by you", and counts as a mistake for
+  that filter.
+- **Hide asks why** ("too senior", "wrong field", …). Common reasons are things a filter could catch.
+- **Stats tab** (numbers from `stats.py`), one section per stage of the plan:
+  1. *Coverage*: jobs per source, and sources that failed in the last search (from `runs.jsonl`)
+  2. *Filtering*: what each filter removes, and how often you said it was wrong (aim for under 5%)
+  3. *Ranking*: whether the jobs you save and apply to sit in the top 10 and 25, and their scores
+     compared with jobs you hide
+  4. *Outcomes*: saved → applied → heard back → interview → offer, plus applications per week
+
 ## Where things are saved
 
 All in `results/` (git-ignored):
@@ -95,7 +110,8 @@ All in `results/` (git-ignored):
 | File | What |
 |---|---|
 | `jobs.json` | the last download; the UI re-scores from this when you change settings |
-| `tracker.json` | jobs you saved, applied to or hid |
+| `tracker.json` | jobs you saved, applied to, hid (with reason) or kept despite a filter; outcomes of applications |
+| `runs.jsonl` | one line per search: when, how many jobs, how many new, which sources failed |
 | `ai_cache.json` | AI answers already paid for |
 | `matches.*`, `report.html` | the export from `jolai search` |
 

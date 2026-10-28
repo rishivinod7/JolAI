@@ -13,7 +13,10 @@ per search.
 - **Work permits and visas**: tell it where you can already work. Jobs elsewhere are kept only if
   they don't rule out visa sponsorship, and they're marked "sponsors visas" or "sponsorship unclear"
 - **Explains every match**: which of your skills fit, what's missing, and why it ranked where it did
-- **Keeps track**: save, mark as applied, or hide jobs
+- **Keeps track**: save, mark as applied (and what happened next), or hide jobs with a reason
+- **Checks itself**: a *Filtered out* tab shows every hidden job and why, so you can spot filter
+  mistakes. A *Stats* tab shows which sources work, which filters are too strict, whether
+  your favourite jobs rank near the top, and your reply and interview rates
 
 ## Getting started
 

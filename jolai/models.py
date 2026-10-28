@@ -58,6 +58,7 @@ class Match:
     llm_score: Optional[float] = None
     llm_summary: Optional[str] = None
     facts: Optional[object] = None  # matcher.JobFacts: level, years, languages, technical score
+    overridden: Optional[str] = None  # the filter you overrode to keep this job, e.g. "too technical"
 
 
 def pay_text(job: Job) -> str:
