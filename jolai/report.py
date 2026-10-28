@@ -22,6 +22,10 @@ def _row(m: Match) -> dict:
         "salary_min": j.salary_min, "salary_max": j.salary_max, "source": j.source, "url": j.url,
         "posted_at": j.posted_at, "matched_skills": m.matched_skills, "missing_skills": m.missing_skills,
         "reasons": m.reasons, "llm_summary": m.llm_summary,
+        "technical": m.facts.technical if m.facts else None,
+        "years_required": m.facts.years_required if m.facts else None,
+        "languages_required": m.facts.languages_required if m.facts else [],
+        "languages_optional": m.facts.languages_optional if m.facts else [],
     }
 
 

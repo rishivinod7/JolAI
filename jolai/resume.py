@@ -31,7 +31,8 @@ YEARS_CLAIM_RE = re.compile(r"(\d{1,2})\+?\s*(?:years|yrs)\b(?:\s+of)?(?:\s+\w+)
 TITLE_WORDS = (
     "engineer|developer|scientist|analyst|manager|designer|architect|consultant|administrator|"
     "specialist|researcher|lead|director|intern|programmer|technician|coordinator|associate|"
-    "strategist|writer|recruiter|accountant|officer|sre|devops"
+    "strategist|writer|recruiter|accountant|officer|sre|devops|assistant|representative|agent|advisor|"
+    "executive|clerk|receptionist|teacher|tutor|nurse|editor|marketer|planner|supervisor"
 )
 TITLE_RE = re.compile(
     rf"^\s*((?:[A-Z][\w/&+.-]*\s+){{0,4}}(?:{TITLE_WORDS})\b(?:\s+(?:I|II|III|IV|[A-Z][\w/&+.-]*)){{0,3}})",

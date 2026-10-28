@@ -56,6 +56,7 @@ class Match:
     reasons: list[str] = field(default_factory=list)
     llm_score: Optional[float] = None
     llm_summary: Optional[str] = None
+    facts: Optional[object] = None  # matcher.JobFacts: level, years, languages, technical score
 
 
 def _norm(s: str) -> str:

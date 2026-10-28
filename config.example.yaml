@@ -1,20 +1,28 @@
-# Copy to config.yaml (git-ignored) and edit.
+# Copy to config.yaml (git-ignored) and edit, or just use the web UI (`jolai ui`),
+# which reads and writes this file for you.
 resume: resume.pdf
 
 preferences:
   # Roles you want. Used to score "want" and as search terms for Remotive.
-  titles: ["Backend Engineer", "Software Engineer", "Platform Engineer"]
-  locations: ["New York", "Brooklyn"]   # substring match against the posting's location
+  titles: ["Customer Success Manager", "Operations Coordinator", "Project Coordinator"]
+  locations: ["London"]   # substring match against the posting's location
   remote: true            # remote roles count as a location match
   remote_only: false      # drop everything that isn't remote
-  keywords: ["fintech", "distributed systems", "developer tools"]   # things you'd like to work on
-  exclude_keywords: ["security clearance", "unpaid"]                # drop postings mentioning these
-  exclude_title_keywords: ["intern", "director", "sales"]           # drop titles with these words
+  keywords: ["education", "healthcare"]   # topics you'd enjoy; boosts matching jobs
+  min_salary: null        # e.g. 40000; only used when a posting lists pay
+
+  # Hard filters: jobs that break these are dropped before scoring.
+  english_only: true      # drop jobs that require another language ("a plus" is OK)
+  max_technical: low      # low = not technical, medium = a little, any = no limit
+  max_years: 3            # drop jobs asking for more years of experience than this
+  max_level: mid          # drop titles above this: entry, mid, senior (or leave out)
+  exclude_title_keywords: ["intern", "sales"]
+  exclude_keywords: []    # drop postings mentioning any of these
   exclude_companies: []
-  min_salary: 150000
+
   # Fix-ups if `jolai profile` misreads your resume:
-  extra_skills: []          # e.g. ["Kubernetes", "Go"]
-  # years_experience: 5
+  extra_skills: []          # e.g. ["Zendesk", "Excel"]
+  # years_experience: 3
 
 weights:
   # 1.0 = rank purely by how likely you are to get the job,
@@ -22,24 +30,26 @@ weights:
   chance_vs_want: 0.6
 
 sources:
-  # Company boards. The name is the last part of the careers URL:
+  # Aggregators (free, no setup)
+  remotive: true            # remote jobs across many fields, including non-technical
+  remoteok: true
+  hackernews: false         # "Ask HN: Who is hiring?": mostly software jobs
+  # Company job boards. The name is the last part of the company's careers URL:
   #   boards.greenhouse.io/<name>   jobs.lever.co/<name>   jobs.ashbyhq.com/<name>
-  greenhouse: [stripe, airbnb, figma, datadog]
-  lever: [palantir, spotify]
-  ashby: [ramp, notion, openai]
+  greenhouse: []
+  lever: []
+  ashby: []
   # Any careers page that publishes schema.org JobPosting data (most do, for Google Jobs).
   career_pages: []
-  # Aggregators
-  remotive: true
-  remoteok: true
-  hackernews: true          # latest "Ask HN: Who is hiring?" thread
-  hackernews_months: 1
-  # search_terms: ["python", "backend"]   # defaults to your first 3 titles
+  # search_terms: ["customer success", "operations"]   # defaults to your first 3 titles
 
 llm:
-  enabled: false            # or pass --llm
-  model: claude-opus-5-5
-  top_n: 20                 # how many heuristic matches to send for re-ranking
+  # Optional AI double-check of your top matches. Off unless you click the button in the UI
+  # or pass --llm. Answers are cached in results/ai_cache.json, so each job is paid for once.
+  enabled: false
+  model: claude-opus-5-5    # see README "Cost" for cheaper options
+  effort: low               # low keeps the answer short and cheap
+  top_n: 10                 # how many of your top matches to check
 
 output:
   top: 25

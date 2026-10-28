@@ -1,101 +1,79 @@
 # JolAI
 
-JolAI is a job finder that starts from your resume. It scrapes job boards, then ranks each posting on two
-things: how likely you are to get it (**chance**) and how close it is to what you're looking for (**want**).
-It writes the results to the terminal, a standalone HTML report, CSV and JSON.
+JolAI is a job finder that starts from your resume. It collects postings from job boards and
+company careers pages, removes the ones that don't suit you, and ranks the rest on two things:
+how likely you are to get the job (**chance**) and how close it is to what you want (**want**).
 
-```
-┏━━━┳━━━━━━━┳━━━━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ # ┃ Score ┃ Chance ┃ Want ┃ Role                              ┃ Company  ┃ Location      ┃ Why                                         ┃
-┡━━━╇━━━━━━━╇━━━━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ 1 │    90 │     93 │   86 │ Senior Backend Engineer, Payments │ Stripe   │ New York, NY  │ title matches; mentions fintech; 6/6 skills │
-│ 2 │    78 │     78 │   79 │ Platform Engineer                 │ palantir │ Remote - US   │ title matches; 5/5 listed skills match      │
-│ … │       │        │      │                                   │          │               │                                             │
-```
+The filtering and ranking are free and run on your computer. AI is an optional extra you turn on
+per search.
 
-## Quick start
+- **English only**: hides jobs that need another language; "German is a plus" stays, with a note
+- **Not too technical**: rates every job from not technical to very technical, and lets you set a limit
+- **Not too much experience**: hides jobs asking for more years, or a more senior level, than you choose
+- **Explains every match**: which of your skills fit, what's missing, and why it ranked where it did
+- **Keeps track**: save, mark as applied, or hide jobs
+
+## Getting started
+
+You need Python 3.10 or newer.
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e .                 # or: pip install -e '.[llm]' to enable the Claude re-rank
-cp config.example.yaml config.yaml
-# put your resume next to it (resume.pdf / .docx / .txt are git-ignored) and edit config.yaml
-
-jolai profile                    # check what was read from your resume
-jolai search                     # scrape, rank, and write results/report.html
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -e .
+jolai ui
 ```
 
-Useful flags for `jolai search`:
+Your browser opens JolAI. Then:
+1. Upload your resume (PDF, Word or text) in the sidebar.
+2. Type the job titles you're after and set the filters.
+3. Click **Search for jobs**. The first search takes a minute or two.
+4. Change filters as much as you like. Results update instantly, without downloading again.
+5. Click **Save settings** so they're remembered next time.
 
-| Flag | What it does |
+Your resume and results stay on your computer (`resume.*`, `config.yaml` and `results/` are
+git-ignored).
+
+## Finding more jobs
+
+Out of the box JolAI searches **Remotive** and **RemoteOK**, both free and with many
+non-technical remote roles. To add a company you like:
+
+1. Open its careers page and look at the address. If it's `boards.greenhouse.io/acme`,
+   `jobs.lever.co/acme` or `jobs.ashbyhq.com/acme`, put `acme` in that box under **Where to look**.
+2. Otherwise, paste the careers page address into **Other careers page URLs**. JolAI reads the
+   job data most careers sites publish for Google.
+
+LinkedIn, Indeed and Glassdoor are not supported. Their terms forbid scraping and they block it.
+
+## Cost
+
+| What | Cost |
 |---|---|
-| `--llm` | Re-rank the top matches with Claude (see below) |
-| `--new-only` | Hide jobs you were shown in earlier runs, handy when you run it daily |
-| `-n 50` | Print the top 50 instead of 25 (the files always hold every match) |
-| `--min-score 60` | Drop weak matches |
-| `--jobs-file results/jobs.json` | Re-score the last scrape without hitting the network, e.g. after changing preferences |
-| `--no-cache` | Skip the 6-hour HTTP cache |
+| Searching, filtering, ranking | Free |
+| AI double-check (optional) | Rough estimates for 10 jobs: **under $0.01** with `claude-haiku-5-5`, about **$0.05** with `claude-sonnet-5-5`, about **$0.10** with `claude-opus-5-5` (the default) |
 
-## Where jobs come from
+The UI shows an estimate before you run the AI check. Each job is only ever sent once, because
+answers are saved. To use it, install `pip install -e '.[llm]'`, get an API key from
+[console.anthropic.com](https://console.anthropic.com), and start the app with
+`ANTHROPIC_API_KEY=sk-... jolai ui`. You can pick the model in the UI or in `config.yaml`.
 
-| Source | Config key | Notes |
-|---|---|---|
-| Greenhouse | `greenhouse: [board, …]` | Public board API. The board is the last part of `boards.greenhouse.io/<board>` |
-| Lever | `lever: [board, …]` | `jobs.lever.co/<board>` |
-| Ashby | `ashby: [board, …]` | `jobs.ashbyhq.com/<board>` |
-| Any careers page | `career_pages: [url, …]` | Reads schema.org `JobPosting` JSON-LD, which most career sites publish for Google Jobs. Follows same-site job links (up to 40 pages) and respects `robots.txt` |
-| Remotive | `remotive: true` | Searched with your target titles |
-| RemoteOK | `remoteok: true` | |
-| Hacker News | `hackernews: true` | Parses the latest "Ask HN: Who is hiring?" thread |
+## Command line
 
-LinkedIn, Indeed and Glassdoor are left out on purpose. Their terms forbid scraping and they block it
-quickly. Most companies you'd find there post the same roles on one of the boards above, so add those
-companies' boards instead.
+The UI and these commands share `config.yaml` (see `config.example.yaml`):
 
-All requests go through a polite client (`jolai/http.py`). It sends an identifying User-Agent, waits at
-least 1 s between requests to the same host, retries with backoff, and caches responses for 6 hours.
+```bash
+jolai profile                 # what JolAI read from your resume
+jolai search                  # download, rank, print a table, write results/report.html
+jolai search --new-only       # only jobs you haven't seen before
+jolai search --jobs-file results/jobs.json   # re-rank the last download, no internet needed
+jolai search --llm            # include the AI double-check
+```
 
-## How ranking works
+## How it works
 
-The resume parser (`jolai/resume.py`) finds:
-- **skills**, using a vocabulary of about 120 skills with aliases (`jolai/skills.py`)
-- **years of experience**, by merging the date ranges in your work history
-- **titles**, and from those plus your years, a **level** (intern, entry, mid, senior, staff, principal)
-
-Each job then gets these scores (`jolai/matcher.py`):
-
-- **Chance** (likelihood of getting it):
-  - 35% text similarity: TF-IDF cosine between your resume and the posting, relative to the best match
-  - 35% skill coverage: the share of the skills the posting mentions that are on your resume
-  - 30% seniority fit: the posting's level against yours, and its "N+ years" against your years.
-    Reaching up one level is penalised a little, two levels a lot. People-management roles are
-    penalised if you've never held one.
-- **Want** (matches what you asked for): title similarity to `preferences.titles`, location or remote fit,
-  your `keywords`, and `min_salary` when the posting lists pay. Preferences you leave blank are skipped,
-  not guessed.
-- **Score** = `chance_vs_want × chance + (1 − chance_vs_want) × want`. The default is 0.6. Raise it to see
-  the roles you're most likely to land, lower it to see the ones you'd most like.
-
-Hard filters (`exclude_*`, `remote_only`) drop jobs before scoring. The run prints how many each filter
-removed.
-
-### Optional: Claude re-rank
-
-Keyword scoring can't tell a must-have skill from a nice-to-have, or credit transferable experience. With
-`--llm` (or `llm.enabled: true`), the top `llm.top_n` heuristic matches are sent with your resume to Claude
-(`claude-opus-5-5` by default). Claude returns a structured fit/want score, a one-line summary and up to three
-gaps for each job, and those jobs are re-ordered by its score.
-
-This needs `pip install -e '.[llm]'` and either `ANTHROPIC_API_KEY` or `ant auth login`. It costs API
-credits: roughly one request per 10 jobs, each carrying your full resume and the job descriptions.
-
-## Output
-
-`results/` holds:
-- `report.html`: cards with scores, reasons, and which skills you have (green) or are missing (orange)
-- `matches.csv` and `matches.json`: every match with all its fields
-- `jobs.json`: the raw scrape, for `--jobs-file`
-- `seen.json`: the jobs already shown, for `--new-only`
+See **[docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md)**: a short tour of the code, what each file
+does, and where to change things.
 
 ## Development
 
@@ -104,4 +82,4 @@ pip install -e '.[llm,dev]'
 pytest
 ```
 
-The tests run every source parser against recorded fixtures in `tests/fixtures/`, so no network is needed.
+The tests use saved sample data in `tests/fixtures/`, including the web UI, so no internet is needed.

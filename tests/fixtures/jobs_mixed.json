@@ -1,0 +1,23 @@
+[
+ {"title": "Customer Support Specialist", "company": "Calmly", "url": "https://example.com/1", "source": "remotive",
+  "location": "Europe", "remote": true, "posted_at": "2026-10-20",
+  "description": "Help our customers by email and chat in Zendesk. 1+ years of customer service experience. Great written communication skills. Spanish is a plus."},
+ {"title": "Kundenservice Mitarbeiter (m/w/d)", "company": "Hallo GmbH", "url": "https://example.com/2", "source": "career_page",
+  "location": "Berlin", "remote": false,
+  "description": "Wir suchen eine freundliche Person für unser Team. Du bist für die Betreuung unserer Kunden zuständig und arbeitest mit Zendesk. Wir bieten dir ein tolles Team, flexible Arbeitszeiten und eine faire Bezahlung. Deine Aufgaben sind die Beantwortung von Anfragen per E-Mail und Telefon, die Pflege der Kundendaten und die Zusammenarbeit mit anderen Abteilungen. Du hast Erfahrung im Kundenservice und sprichst sehr gut Deutsch. Wir freuen uns auf deine Bewerbung und auf ein Gespräch mit dir."},
+ {"title": "Customer Success Associate", "company": "Lingo", "url": "https://example.com/3", "source": "remotive",
+  "location": "Remote", "remote": true,
+  "description": "Support our French-speaking clients. Fluent French is required. 1-2 years of experience in customer success."},
+ {"title": "Senior Backend Engineer", "company": "Stackly", "url": "https://example.com/4", "source": "greenhouse",
+  "location": "Remote", "remote": true,
+  "description": "5+ years of experience writing production Python and Go. Kubernetes, AWS, PostgreSQL, Kafka, system design and code review."},
+ {"title": "Head of Customer Operations", "company": "Bigco", "url": "https://example.com/5", "source": "lever",
+  "location": "Lisbon", "remote": false,
+  "description": "Lead a team of 40. 8+ years of experience in customer operations with 4+ years managing managers."},
+ {"title": "Social Media Coordinator", "company": "Wander", "url": "https://example.com/6", "source": "remoteok",
+  "location": "Remote", "remote": true, "salary_min": 38000, "salary_max": 45000,
+  "description": "Plan our Instagram and TikTok content in Canva. 1+ years of social media experience. Strong communication skills."},
+ {"title": "Technical Support Engineer", "company": "Devtool", "url": "https://example.com/7", "source": "ashby",
+  "location": "Remote", "remote": true,
+  "description": "Debug customer issues with our APIs and SDK. Scripting in Python or Bash, Linux, SQL, Docker. 2+ years of experience."}
+]

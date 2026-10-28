@@ -1,4 +1,4 @@
-"""Load the YAML config file."""
+"""Load and save the YAML config file (config.yaml). The UI and the CLI share it."""
 
 from __future__ import annotations
 
@@ -10,15 +10,30 @@ from .matcher import Preferences
 
 DEFAULT_SOURCES = {"remotive": True, "remoteok": True, "hackernews": True}
 
+# "max_technical" can be written as a word in the config; these are the cut-offs on the 0-100 scale.
+TECHNICAL_LIMITS = {"low": 34, "medium": 64, "any": None, "high": None}
+
 
 def load_config(path: str | Path | None) -> dict:
-    if not path:
+    if not path or not Path(path).exists():
         return {}
     with open(path, encoding="utf-8") as fh:
         return yaml.safe_load(fh) or {}
 
 
+def save_config(config: dict, path: str | Path) -> None:
+    with open(path, "w", encoding="utf-8") as fh:
+        yaml.safe_dump(config, fh, sort_keys=False, allow_unicode=True)
+
+
+def _technical_limit(value) -> int | None:
+    if value is None or isinstance(value, int):
+        return value
+    return TECHNICAL_LIMITS.get(str(value).lower())
+
+
 def preferences_from(config: dict) -> Preferences:
+    """Turn the ``preferences`` and ``weights`` sections into a Preferences object."""
     p = config.get("preferences") or {}
     weights = config.get("weights") or {}
     return Preferences(
@@ -31,12 +46,16 @@ def preferences_from(config: dict) -> Preferences:
         exclude_title_keywords=list(p.get("exclude_title_keywords") or []),
         exclude_companies=list(p.get("exclude_companies") or []),
         min_salary=p.get("min_salary"),
+        english_only=bool(p.get("english_only", False)),
+        max_years=p.get("max_years"),
+        max_level=p.get("max_level"),
+        max_technical=_technical_limit(p.get("max_technical")),
         alpha=float(weights.get("chance_vs_want", 0.6)),
     )
 
 
 def describe_preferences(prefs: Preferences) -> str:
-    """Plain-language summary of preferences, used in the LLM prompt."""
+    """Plain-language summary of preferences, used in the AI prompt."""
     lines = []
     if prefs.titles:
         lines.append("Target titles: " + ", ".join(prefs.titles))
@@ -47,4 +66,10 @@ def describe_preferences(prefs: Preferences) -> str:
         lines.append("Interested in: " + ", ".join(prefs.keywords))
     if prefs.min_salary:
         lines.append(f"Minimum salary: ${prefs.min_salary:,.0f}")
+    if prefs.english_only:
+        lines.append("Only speaks English: any other required language is a dealbreaker.")
+    if prefs.max_years is not None:
+        lines.append(f"Wants roles asking for at most {prefs.max_years} years of experience.")
+    if prefs.max_technical is not None:
+        lines.append("Wants roles that are not very technical (little or no coding).")
     return "\n".join(lines) or "No stated preferences."
