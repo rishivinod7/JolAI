@@ -26,6 +26,7 @@ preferences:
 
   # Fix-ups if `jolai profile` misreads your resume:
   extra_skills: []          # e.g. ["Zendesk", "Excel"]
+  ignore_skills: []         # skills it picked up by mistake, e.g. ["Sales"]
   # years_experience: 3
 
 weights:

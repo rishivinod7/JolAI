@@ -223,6 +223,9 @@ with st.sidebar:
     with st.expander("Fix what was read from your resume"):
         prefs["extra_skills"] = lines(st.text_input("Skills it missed (comma separated)",
                                                     ", ".join(prefs.get("extra_skills") or [])))
+        prefs["ignore_skills"] = lines(st.text_input("Skills it got wrong (comma separated)",
+                                                     ", ".join(prefs.get("ignore_skills") or []),
+                                                     placeholder="e.g. Sales"))
         override = st.number_input("Years of experience (0 = work it out)", 0.0, 50.0,
                                    float(prefs.get("years_experience") or 0), 0.5)
         prefs["years_experience"] = override or None

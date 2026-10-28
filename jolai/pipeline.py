@@ -44,7 +44,7 @@ def read_profile(config: dict, resume_path: str | Path | None = None, resume_tex
         if not path:
             raise ValueError("No resume given. Set `resume:` in config.yaml or upload one.")
         resume_text = read_resume_text(path)
-    return build_profile(resume_text, extra_skills=prefs.get("extra_skills"),
+    return build_profile(resume_text, extra_skills=prefs.get("extra_skills"), ignore_skills=prefs.get("ignore_skills"),
                          years_override=prefs.get("years_experience"))
 
 

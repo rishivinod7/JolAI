@@ -184,9 +184,12 @@ def level_for(years: float, titles: list[str]) -> int:
     return level
 
 
-def build_profile(text: str, extra_skills: list[str] | None = None, titles: list[str] | None = None,
+def build_profile(text: str, extra_skills: list[str] | None = None, ignore_skills: list[str] | None = None,
+                  titles: list[str] | None = None,
                   years_override: float | None = None) -> Profile:
+    # extra_skills: ones the parser missed; ignore_skills: ones it picked up by mistake.
     skills = extract_skills(text) | {canonicalize(s) for s in (extra_skills or [])}
+    skills -= {canonicalize(s) for s in (ignore_skills or [])}
     found_titles = extract_titles(text)
     years = years_override if years_override is not None else estimate_years(text)
     management = bool(re.search(r"\b(manager|director|head of|vp|vice president)\b", " ".join(found_titles), re.I))

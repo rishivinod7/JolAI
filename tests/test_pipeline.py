@@ -609,3 +609,14 @@ def test_only_here_counts_jobs_no_other_source_found():
     rows = {r["source"]: r for r in source_summary(jobs, None)}
     assert rows["adzuna"]["jobs"] == 2 and rows["adzuna"]["only here"] == 1
     assert rows["jooble"]["only here"] == 0
+
+
+def test_sales_data_is_not_a_sales_skill_and_ignore_skills():
+    from jolai.resume import build_profile
+    from jolai.skills import extract_skills
+
+    assert not {"Sales", "Financial Analysis"} & extract_skills("Analyzed sales & OPEX data; sales performance insights")
+    assert "Sales" in extract_skills("Exceeded B2B sales targets by 20%")
+    assert "Financial Analysis" in extract_skills("Built financial models and ran P&L reviews")
+    profile = build_profile("Power BI dashboards and marketing decks", ignore_skills=["marketing"])
+    assert "Marketing" not in profile.skills and "Power BI" in profile.skills
