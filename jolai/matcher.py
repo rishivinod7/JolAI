@@ -258,7 +258,8 @@ def score_jobs(profile: Profile, jobs: list[Job], prefs: Preferences) -> tuple[l
             parts.append((0.25, min(1.0, len(hits) / max(1, min(3, len(prefs.keywords))))))
             if hits:
                 reasons.append("mentions " + ", ".join(hits))
-        if prefs.min_salary and (job.salary_max or job.salary_min):
+        # Only compare pay in USD; the minimum you set isn't converted between currencies.
+        if prefs.min_salary and (job.salary_max or job.salary_min) and job.salary_currency in (None, "USD"):
             top = job.salary_max or job.salary_min
             parts.append((0.2, 1.0 if top >= prefs.min_salary else 0.2))
             if top < prefs.min_salary:

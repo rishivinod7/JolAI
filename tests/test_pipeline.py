@@ -338,3 +338,99 @@ def test_business_search_ranking():
     matches, filtered = pipeline.rank(profile, pipeline.load_jobs(FIX / "jobs_business.json"), config)
     titles = [m.job.title for m in matches]
     assert "Business Development Executive" in titles and "Product Operations Analyst" not in titles
+
+
+# ---- Adzuna and Jooble ---------------------------------------------------------------
+
+class SearchApiFetcher:
+    """Fake fetcher for the two search APIs; records requests so tests can check them."""
+
+    def __init__(self, status: int = 200):
+        self.status, self.gets, self.posts = status, [], []
+
+    def _check(self, url):
+        if self.status != 200:
+            import requests
+
+            resp = requests.Response()
+            resp.status_code, resp.url = self.status, url
+            raise requests.HTTPError(f"{self.status} Client Error for url: {url}", response=resp)
+
+    def get_json(self, url):
+        self.gets.append(url)
+        self._check(url)
+        return json.loads((FIX / "adzuna_in.json").read_text())
+
+    def post_json(self, url, body):
+        self.posts.append((url, body))
+        self._check(url)
+        return json.loads((FIX / "jooble_hk.json").read_text()) if body["page"] == "1" else {"jobs": []}
+
+
+def test_adzuna_parsing():
+    from urllib.parse import parse_qs, urlparse
+
+    from jolai.sources.search_apis import adzuna
+
+    fetcher = SearchApiFetcher()
+    jobs = adzuna(fetcher, {"country": "in", "what": "business analyst", "app_id": "ID", "app_key": "KEY"})
+    url = urlparse(fetcher.gets[0])
+    assert url.path == "/v1/api/jobs/in/search/1"
+    assert parse_qs(url.query)["what"] == ["business analyst"] and parse_qs(url.query)["app_id"] == ["ID"]
+    ba, pc = jobs
+    assert ba.title == "Business Analyst - Partnerships"  # <strong> highlighting removed
+    assert ba.company == "Example Payments Pvt Ltd" and ba.location == "Bengaluru, Karnataka, India"
+    assert (ba.salary_min, ba.salary_max, ba.salary_currency) == (900000, 1400000, "INR")
+    assert pc.salary_min is None  # Adzuna's predicted salaries are dropped
+
+
+def test_jooble_parsing():
+    from jolai.sources.search_apis import jooble
+
+    fetcher = SearchApiFetcher()
+    jobs = jooble(fetcher, {"location": "Hong Kong", "keywords": "partnerships", "api_key": "KEY", "pages": 2})
+    assert fetcher.posts[0] == ("https://jooble.org/api/KEY", {"keywords": "partnerships", "location": "Hong Kong",
+                                                                "page": "1"})
+    first, second = jobs
+    assert first.title == "Strategic Partnerships Manager" and first.location == "Central, Hong Kong"
+    assert "HK$35,000" in " ".join(first.tags) and "&nbsp;" not in first.description
+    assert second.location == "Hong Kong"  # empty location falls back to the searched place
+
+
+def test_search_api_errors_hide_the_key():
+    from jolai.sources.search_apis import adzuna, jooble
+
+    for func, query in [(adzuna, {"country": "in", "app_id": "ID", "app_key": "SECRET"}),
+                        (jooble, {"location": "Hong Kong", "api_key": "SECRET"})]:
+        with pytest.raises(RuntimeError) as err:
+            func(SearchApiFetcher(status=403), query)
+        assert "SECRET" not in str(err.value) and "check your API key" in str(err.value)
+
+
+def test_search_api_tasks_and_ranking(monkeypatch):
+    from jolai import pipeline, sources
+
+    monkeypatch.delenv("JOOBLE_API_KEY", raising=False)
+    monkeypatch.delenv("ADZUNA_APP_ID", raising=False)
+    monkeypatch.delenv("ADZUNA_APP_KEY", raising=False)
+    # Without keys: one clear error per service, not one per search.
+    errors = []
+    sources.collect(SearchApiFetcher(), {"adzuna": {"countries": ["in"]}, "jooble": {"locations": ["Hong Kong"]}},
+                    ["a", "b"], on_result=lambda label, n, e: e and errors.append((label, str(e))))
+    assert sorted(label for label, _ in errors) == ["adzuna", "jooble"]
+    assert "developer.adzuna.com" in dict(errors)["adzuna"]
+
+    monkeypatch.setenv("JOOBLE_API_KEY", "K")
+    cfg = {"adzuna": {"countries": ["in", "sg"], "app_id": "I", "app_key": "K"}, "jooble": {"locations": ["Hong Kong"]}}
+    labels = [label for label, _, _ in sources.plan_tasks(cfg, ["Business Analyst", "Partnerships Manager"])]
+    assert len([lb for lb in labels if lb.startswith("adzuna:")]) == 4
+    assert len([lb for lb in labels if lb.startswith("jooble:")]) == 2
+
+    jobs = sources.collect(SearchApiFetcher(), {"adzuna": {"countries": ["in"], "app_id": "I", "app_key": "K"},
+                                                "jooble": {"locations": ["Hong Kong"]}}, ["x"])
+    config = {"resume": str(FIX / "resume_business.txt"), "preferences": dict(BUSINESS_PREFS)}
+    profile = pipeline.read_profile(config)
+    matches, filtered = pipeline.rank(profile, jobs, config)
+    assert {m.job.title for m in matches} == {"Business Analyst - Partnerships", "Strategic Partnerships Manager"}
+    assert all(m.facts.work_authorization == "ok" for m in matches)  # India and Hong Kong
+    assert filtered == {"needs a language you don't speak": 2}  # Hindi and Cantonese

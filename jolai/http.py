@@ -50,6 +50,18 @@ class Fetcher:
     def get_json(self, url: str):
         return json.loads(self.get_text(url))
 
+    def post_json(self, url: str, body: dict):
+        """POST a JSON body and parse the JSON reply. Cached like GETs, keyed on URL + body."""
+        cache_key = url + "\n" + json.dumps(body, sort_keys=True)
+        cached = self._cache_read(cache_key)
+        if cached is not None:
+            return json.loads(cached)
+        self._throttle(url)
+        resp = self.session.post(url, json=body, timeout=self.timeout)
+        resp.raise_for_status()
+        self._cache_write(cache_key, resp.text)
+        return resp.json()
+
     def allowed(self, url: str) -> bool:
         parsed = urlparse(url)
         origin = f"{parsed.scheme}://{parsed.netloc}"

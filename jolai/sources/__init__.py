@@ -10,6 +10,7 @@ from ..models import Job
 from .aggregators import hackernews, remoteok, remotive
 from .ats import ashby, greenhouse, lever
 from .careers import career_page
+from .search_apis import MissingKey, adzuna, adzuna_keys, jooble, jooble_key
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +30,44 @@ def plan_tasks(sources: dict, search_terms: list[str]) -> list[tuple[str, callab
         tasks.append(("remoteok", remoteok, ""))
     if sources.get("hackernews"):
         tasks.append(("hackernews", hackernews, int(sources.get("hackernews_months", 1))))
+    tasks += _search_api_tasks(sources, [t for t in terms if t])
+    return tasks
+
+
+def _fail(message: str):
+    def task(fetcher, arg):
+        raise MissingKey(message)
+    return task
+
+
+def _search_api_tasks(sources: dict, terms: list[str]) -> list[tuple[str, callable, object]]:
+    """One task per (country or city) x (search term) for Adzuna and Jooble."""
+    tasks = []
+    terms = terms or [""]
+    az = sources.get("adzuna") or {}
+    if az and az.get("enabled", True) and az.get("countries"):
+        try:
+            app_id, app_key = adzuna_keys(az)
+        except MissingKey as exc:
+            tasks.append(("adzuna", _fail(str(exc)), None))
+        else:
+            for country in az["countries"]:
+                for term in terms:
+                    tasks.append((f"adzuna:{country}:{term or 'all'}", adzuna,
+                                  {"country": country, "what": term, "app_id": app_id, "app_key": app_key,
+                                   "pages": az.get("pages", 1), "max_days_old": az.get("max_days_old", 30)}))
+    jb = sources.get("jooble") or {}
+    if jb and jb.get("enabled", True) and jb.get("locations"):
+        try:
+            key = jooble_key(jb)
+        except MissingKey as exc:
+            tasks.append(("jooble", _fail(str(exc)), None))
+        else:
+            for location in jb["locations"]:
+                for term in terms:
+                    tasks.append((f"jooble:{location}:{term or 'all'}", jooble,
+                                  {"location": location, "keywords": term, "api_key": key,
+                                   "pages": jb.get("pages", 1)}))
     return tasks
 
 

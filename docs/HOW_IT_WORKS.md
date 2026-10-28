@@ -44,6 +44,7 @@ Each file in `sources/` knows how to read one kind of site and turns it into the
 | `ats.py` | Greenhouse, Lever and Ashby, the systems most companies use for their careers pages |
 | `aggregators.py` | Remotive, RemoteOK, Hacker News "Who is hiring?" |
 | `careers.py` | Any careers page that includes standard job data (schema.org `JobPosting`) |
+| `search_apis.py` | Adzuna and Jooble, job search engines covering whole countries (free API keys) |
 
 `sources/__init__.py` runs them all at once and removes duplicates. `http.py` keeps the scraping
 polite: it waits between requests to the same site, follows `robots.txt`, retries failures and

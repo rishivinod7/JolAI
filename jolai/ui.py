@@ -25,6 +25,8 @@ import streamlit as st
 from jolai import pipeline
 from jolai.config import load_config, save_config
 from jolai.filters import technical_label
+from jolai.models import pay_text
+from jolai.sources.search_apis import ADZUNA_COUNTRIES
 from jolai.resume import LEVELS, read_resume_text
 
 # Rough prices in $ per million tokens (input, output), for the AI cost estimate only.
@@ -158,6 +160,25 @@ with st.sidebar:
     config.setdefault("weights", {})["chance_vs_want"] = weight
 
     with st.expander("3 · Where to look"):
+        st.markdown("**Job search engines** (free API key, whole-country searches)")
+        az = src.setdefault("adzuna", {})
+        az["countries"] = st.multiselect(
+            "Adzuna countries", list(ADZUNA_COUNTRIES), az.get("countries") or [],
+            format_func=lambda c: ADZUNA_COUNTRIES[c], help="Adzuna doesn't cover Hong Kong; use Jooble for it.")
+        if az["countries"]:
+            c1, c2 = st.columns(2)
+            az["app_id"] = c1.text_input("Adzuna app_id", az.get("app_id", ""), type="password")
+            az["app_key"] = c2.text_input("Adzuna app_key", az.get("app_key", ""), type="password")
+            st.caption("Free keys: [developer.adzuna.com](https://developer.adzuna.com/)")
+        jb = src.setdefault("jooble", {})
+        jb["locations"] = lines(st.text_input("Jooble locations (comma separated)", ", ".join(jb.get("locations") or []),
+                                              placeholder="Hong Kong, India, Singapore"))
+        if jb["locations"]:
+            jb["api_key"] = st.text_input("Jooble API key", jb.get("api_key", ""), type="password")
+            st.caption("Free key: [jooble.org/api/about](https://jooble.org/api/about)")
+        st.caption("Each search engine runs once per job title (up to 6 titles) per place, so more titles "
+                   "and places mean a slower search.")
+        st.divider()
         src["remotive"] = st.checkbox("Remotive (remote jobs, many non-technical)", src.get("remotive", True))
         src["remoteok"] = st.checkbox("RemoteOK", src.get("remoteok", True))
         src["hackernews"] = st.checkbox("Hacker News 'Who is hiring' (mostly technical)", src.get("hackernews", False))
@@ -283,11 +304,9 @@ def job_card(m, key_prefix: str) -> None:
         left.caption(f"chance {m.chance:.0f}  \nwant {m.want:.0f}")
         with right:
             st.markdown(f"#### [{j.title}]({j.url})")
-            pay = ""
-            if j.salary_min or j.salary_max:
-                pay = " · $" + "–".join(f"{v:,.0f}" for v in dict.fromkeys(v for v in (j.salary_min, j.salary_max) if v))
+            pay = f" · {pay_text(j)}" if pay_text(j) else ""
             st.markdown(f'<div class="meta">{html.escape(j.company)} · {html.escape(j.location or "location n/a")}'
-                        f'{" · remote" if j.remote and "remote" not in j.location.lower() else ""}{pay} · via {j.source}</div>', unsafe_allow_html=True)
+                        f'{" · remote" if j.remote and "remote" not in j.location.lower() else ""}{pay} · via {j.source}{" (summary only, open the job for details)" if j.source in ("adzuna", "jooble") else ""}</div>', unsafe_allow_html=True)
             badges = [f"{technical_label(f.technical)} technical", f"{LEVELS[f.level]} level"]
             if f.years_required:
                 badges.append(f"asks {f.years_required}+ yrs")

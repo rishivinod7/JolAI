@@ -39,7 +39,21 @@ git-ignored).
 ## Finding more jobs
 
 Out of the box JolAI searches **Remotive** and **RemoteOK**, both free and with many
-non-technical remote roles. To add a company you like:
+non-technical remote roles.
+
+**Search whole countries with Adzuna and Jooble (recommended).** These job search engines collect
+listings from many job sites, through official APIs. Both are free, but you need a key:
+
+| | Covers | Get a key |
+|---|---|---|
+| **Jooble** | Hong Kong, India, Singapore and most other countries | [jooble.org/api/about](https://jooble.org/api/about) |
+| **Adzuna** | India, Singapore, UK, US, Australia, much of Europe (not Hong Kong) | [developer.adzuna.com](https://developer.adzuna.com/) |
+
+In the UI, open **Where to look**, pick the countries or places, and paste the keys. They're saved
+in `config.yaml`, which is git-ignored. Each search runs once per job title (up to 6) per place.
+These sites only return a short summary of each job, so their scores lean more on the title.
+
+**Add companies you like:**
 
 1. Open its careers page and look at the address. If it's `boards.greenhouse.io/acme`,
    `jobs.lever.co/acme` or `jobs.ashbyhq.com/acme`, put `acme` in that box under **Where to look**.

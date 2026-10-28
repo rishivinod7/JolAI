@@ -34,6 +34,18 @@ weights:
   chance_vs_want: 0.6
 
 sources:
+  # Job search engines: whole-country searches, one per job title (up to 6) per place.
+  # Free keys; you can also use the env vars ADZUNA_APP_ID / ADZUNA_APP_KEY / JOOBLE_API_KEY instead.
+  adzuna:                   # https://developer.adzuna.com/  (no Hong Kong)
+    countries: []           # e.g. [in, sg, gb]
+    app_id: ""
+    app_key: ""
+    pages: 1                # 50 jobs per page
+    max_days_old: 30
+  jooble:                   # https://jooble.org/api/about
+    locations: []           # e.g. [Hong Kong, India, Singapore]
+    api_key: ""
+    pages: 1
   # Aggregators (free, no setup)
   remotive: true            # remote jobs across many fields, including non-technical
   remoteok: true

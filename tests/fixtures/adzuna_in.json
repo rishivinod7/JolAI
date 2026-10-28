@@ -1,0 +1,16 @@
+{"count": 2, "mean": 900000, "results": [
+ {"id": "4410001", "title": "<strong>Business</strong> <strong>Analyst</strong> - Partnerships",
+  "description": "We are looking for a business analyst to gather requirements from stakeholders and build dashboards in Power BI. 2+ years of experience…",
+  "redirect_url": "https://www.adzuna.in/land/ad/4410001", "created": "2026-10-20T08:00:00Z",
+  "company": {"display_name": "Example Payments Pvt Ltd"},
+  "location": {"display_name": "Bengaluru, Karnataka", "area": ["India", "Karnataka", "Bengaluru"]},
+  "salary_min": 900000, "salary_max": 1400000, "salary_is_predicted": "0",
+  "contract_time": "full_time", "category": {"label": "Consultancy Jobs", "tag": "consultancy-jobs"}},
+ {"id": "4410002", "title": "Project Coordinator",
+  "description": "Coordinate project timelines across teams. Hindi required.",
+  "redirect_url": "https://www.adzuna.in/land/ad/4410002", "created": "2026-10-18T08:00:00Z",
+  "company": {"display_name": "Delhi Logistics"},
+  "location": {"display_name": "Gurgaon, Haryana", "area": ["India", "Haryana", "Gurgaon"]},
+  "salary_min": 500000, "salary_max": 500000, "salary_is_predicted": "1",
+  "category": {"label": "Logistics & Warehouse Jobs"}}
+]}

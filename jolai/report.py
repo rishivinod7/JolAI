@@ -11,7 +11,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
-from .models import Match, Profile
+from .models import Match, Profile, pay_text
 
 
 def _row(m: Match) -> dict:
@@ -19,7 +19,7 @@ def _row(m: Match) -> dict:
     return {
         "id": j.id, "score": m.score, "chance": m.chance, "want": m.want, "llm_score": m.llm_score,
         "title": j.title, "company": j.company, "location": j.location, "remote": j.remote,
-        "salary_min": j.salary_min, "salary_max": j.salary_max, "source": j.source, "url": j.url,
+        "salary_min": j.salary_min, "salary_max": j.salary_max, "salary_currency": j.salary_currency, "source": j.source, "url": j.url,
         "posted_at": j.posted_at, "matched_skills": m.matched_skills, "missing_skills": m.missing_skills,
         "reasons": m.reasons, "llm_summary": m.llm_summary,
         "technical": m.facts.technical if m.facts else None,
@@ -77,8 +77,8 @@ def render_html(matches: list[Match], profile: Profile) -> str:
     for i, m in enumerate(matches, 1):
         j = m.job
         pay = ""
-        if j.salary_min or j.salary_max:
-            pay = " · $" + "–".join(f"{v:,.0f}" for v in dict.fromkeys(x for x in (j.salary_min, j.salary_max) if x))
+        if pay_text(j):
+            pay = " · " + pay_text(j)
         skills = "".join(f'<span class="chip ok">{e(s)}</span>' for s in m.matched_skills)
         skills += "".join(f'<span class="chip miss">{e(s)}</span>' for s in m.missing_skills)
         why = e(m.llm_summary) if m.llm_summary else "<br>".join(e(r) for r in m.reasons)

@@ -20,6 +20,7 @@ class Job:
     posted_at: Optional[str] = None
     salary_min: Optional[float] = None
     salary_max: Optional[float] = None
+    salary_currency: Optional[str] = None  # e.g. "INR"; None means USD or unknown
     tags: list[str] = field(default_factory=list)
 
     @property
@@ -57,6 +58,15 @@ class Match:
     llm_score: Optional[float] = None
     llm_summary: Optional[str] = None
     facts: Optional[object] = None  # matcher.JobFacts: level, years, languages, technical score
+
+
+def pay_text(job: Job) -> str:
+    """'$120,000–150,000' or 'INR 1,200,000' style pay range, or '' when the posting has none."""
+    values = list(dict.fromkeys(v for v in (job.salary_min, job.salary_max) if v))
+    if not values:
+        return ""
+    prefix = "$" if job.salary_currency in (None, "USD") else f"{job.salary_currency} "
+    return prefix + "–".join(f"{v:,.0f}" for v in values)
 
 
 def _norm(s: str) -> str:
