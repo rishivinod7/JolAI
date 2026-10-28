@@ -97,7 +97,9 @@ The app checks its own work so you can see which part needs fixing:
   that filter.
 - **Hide asks why** ("too senior", "wrong field", …). Common reasons are things a filter could catch.
 - **Stats tab** (numbers from `stats.py`), one section per stage of the plan:
-  1. *Coverage*: jobs per source, and sources that failed in the last search (from `runs.jsonl`)
+  1. *Coverage*: jobs per source, how many no other source found ("only here"), sources that
+     failed in the last search (from `runs.jsonl`), and API requests used against each quota
+     (from `api_usage.json`, written by `usage.py`)
   2. *Filtering*: what each filter removes, and how often you said it was wrong (aim for under 5%)
   3. *Ranking*: whether the jobs you save and apply to sit in the top 10 and 25, and their scores
      compared with jobs you hide

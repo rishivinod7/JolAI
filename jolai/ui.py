@@ -27,7 +27,7 @@ from jolai.config import load_config, save_config
 from jolai.filters import technical_label
 from jolai.models import pay_text
 from jolai.sources.search_apis import ADZUNA_COUNTRIES
-from jolai.usage import Usage, limit_for
+from jolai.usage import Usage, limit_for, usage_text
 from jolai.resume import LEVELS, read_resume_text
 
 # Rough prices in $ per million tokens (input, output), for the AI cost estimate only.
@@ -189,7 +189,12 @@ with st.sidebar:
             c1, c2 = st.columns(2)
             az["app_id"] = c1.text_input("Adzuna app_id", az.get("app_id", ""), type="password")
             az["app_key"] = c2.text_input("Adzuna app_key", az.get("app_key", ""), type="password")
-            st.caption("Free keys: [developer.adzuna.com](https://developer.adzuna.com/)")
+            az["max_terms"] = st.slider("Job titles to search on Adzuna", 1, 6, int(az.get("max_terms", 6)),
+                                        help="Each title is one request per country. Your first titles are used.")
+            az_per_search = az["max_terms"] * len(az["countries"]) * int(az.get("pages", 1))
+            st.caption(f"Each search uses up to {az_per_search} Adzuna requests; "
+                       f"{usage_text(Usage(out_dir / 'api_usage.json'), 'adzuna', az)}. "
+                       "Keys: [developer.adzuna.com](https://developer.adzuna.com/)")
         jb = src.setdefault("jooble", {})
         jb["locations"] = lines(st.text_input("Jooble locations (comma separated)", ", ".join(jb.get("locations") or []),
                                               placeholder="Hong Kong, India, Singapore"))
@@ -198,11 +203,9 @@ with st.sidebar:
             jb["max_terms"] = st.slider("Job titles to search on Jooble", 1, 6, int(jb.get("max_terms", 4)),
                                         help="Each title is one request per place. Your first titles are used.")
             per_search = jb["max_terms"] * len(jb["locations"]) * int(jb.get("pages", 1))
-            limit = limit_for("jooble", jb)
-            used = Usage(out_dir / "api_usage.json").used("jooble")
-            st.caption(f"Each search uses up to {per_search} Jooble requests"
-                       + (f"; {used} of {limit} used so far." if limit else ".")
-                       + " Repeat searches within 6 hours are free (cached). "
+            st.caption(f"Each search uses up to {per_search} Jooble requests; "
+                       f"{usage_text(Usage(out_dir / 'api_usage.json'), 'jooble', jb)}. "
+                       "Repeat searches within 6 hours are free (cached). "
                        "Free key: [jooble.org/api/about](https://jooble.org/api/about)")
         st.caption("Each search engine runs once per job title (up to 6 titles) per place, so more titles "
                    "and places mean a slower search.")
@@ -505,16 +508,24 @@ with tab_stats:
         if last_run:
             st.caption(f"Last search {last_run['at'].replace('T', ' ')}: {last_run['total']} jobs, "
                        f"{last_run['new']} new.")
+    if src_rows:
+        st.dataframe([{k: r[k] for k in ("source", "jobs", "only here", "searches", "failed")} for r in src_rows],
+                     hide_index=True, width="stretch")
+        st.caption("**Only here** = jobs no other source found. A source with few of these adds little; "
+                   "worth knowing before paying for one.")
     usage = Usage(out_dir / "api_usage.json")
-    jb_cfg = src.get("jooble") or {}
-    if usage.used("jooble") or jb_cfg.get("locations"):
-        limit = limit_for("jooble", jb_cfg)
-        used = usage.used("jooble")
-        st.progress(min(1.0, used / limit) if limit else 0.0,
-                    text=f"Jooble requests used: {used} of {limit}" if limit else f"Jooble requests used: {used}")
-        if limit and used >= 0.8 * limit:
-            st.warning("Jooble requests are running low. Reply to Jooble's email to ask for more, "
-                       "or lower 'Job titles to search on Jooble'.")
+    for service, key in (("jooble", "locations"), ("adzuna", "countries")):
+        svc_cfg = src.get(service) or {}
+        if not (usage.used(service) or svc_cfg.get(key)):
+            continue
+        limit = limit_for(service, svc_cfg)
+        remaining = usage.remaining(service, svc_cfg)
+        spent = usage.this_month(service) if svc_cfg.get("limit_period") == "month" else usage.used(service)
+        st.progress(min(1.0, spent / limit) if limit else 0.0,
+                    text=f"{service.title()} requests: {usage_text(usage, service, svc_cfg)}")
+        if limit and remaining is not None and remaining <= 0.2 * limit:
+            st.warning(f"{service.title()} requests are running low. Lower 'Job titles to search on "
+                       f"{service.title()}' under Where to look, or raise the limit.")
     if len(runs) > 1:
         with st.expander("Search history"):
             st.dataframe([{"when": r["at"].replace("T", " "), "jobs": r["total"], "new": r["new"]}

@@ -576,3 +576,36 @@ def test_jooble_request_budget(tmp_path, monkeypatch):
     usage = Usage(tmp_path / "api_usage.json")
     assert seen["remaining"] == 493 and usage.used("jooble") == 14 and usage.this_month("jooble") == 14
     assert "greenhouse" not in usage.data and "remaining_requests" not in config["sources"]["jooble"]
+
+
+def test_adzuna_quota_and_usage_limits(tmp_path):
+    from jolai import sources
+    from jolai.usage import Usage, usage_text
+
+    titles = ["Business Analyst", "Product Strategy", "Project Coordinator", "Partnerships Manager"]
+    cfg = {"adzuna": {"countries": ["in", "sg"], "app_id": "I", "app_key": "K", "max_terms": 2}}
+    labels = [lb for lb, _, _ in sources.plan_tasks(cfg, titles)]
+    assert labels == ["adzuna:in:Business Analyst", "adzuna:sg:Business Analyst",
+                      "adzuna:in:Product Strategy", "adzuna:sg:Product Strategy"]
+    cfg["adzuna"]["remaining_requests"] = 3
+    assert len(sources.plan_tasks(cfg, titles)) == 3
+
+    usage = Usage(tmp_path / "u.json")
+    usage.add_requests({"api.adzuna.com": 20, "jooble.org": 5})
+    assert usage.remaining("adzuna", {}) == 5  # 25 test calls by default
+    paid = {"request_limit": 5000, "limit_period": "month", "daily_limit": 500}
+    assert usage.remaining("adzuna", paid) == 480  # the daily cap is the tighter one
+    assert usage_text(usage, "adzuna", paid) == "20 of 5000 used this month, 20 of 500 today"
+    assert usage.remaining("jooble", {}) == 495
+
+
+def test_only_here_counts_jobs_no_other_source_found():
+    from jolai.stats import source_summary
+
+    # The same job on two sites, with different location wording, plus one job only Adzuna has.
+    jobs = [Job("Business Analyst", "Harbour Bank", "u1", "jooble", "Central, Hong Kong"),
+            Job("Business analyst", "Harbour Bank", "u2", "adzuna", "Hong Kong"),
+            Job("Partnerships Manager", "AsiaHub", "u3", "adzuna", "Singapore")]
+    rows = {r["source"]: r for r in source_summary(jobs, None)}
+    assert rows["adzuna"]["jobs"] == 2 and rows["adzuna"]["only here"] == 1
+    assert rows["jooble"]["only here"] == 0

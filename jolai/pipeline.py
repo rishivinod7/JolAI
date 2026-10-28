@@ -26,7 +26,7 @@ from .config import DEFAULT_SOURCES, describe_preferences, preferences_from
 from .http import Fetcher
 from .matcher import Rejected, score_jobs
 from .models import Job, Match, Profile
-from .usage import Usage, limit_for
+from .usage import Usage
 from .resume import build_profile, read_resume_text
 
 
@@ -67,9 +67,10 @@ def collect_jobs(config: dict, use_cache: bool = True, on_progress=None) -> list
     results: dict[str, dict] = {}
     usage = Usage(results_dir(config) / "api_usage.json")
     source_cfg = json.loads(json.dumps(config.get("sources") or DEFAULT_SOURCES))  # copy; we add budget info
-    jb = source_cfg.get("jooble")
-    if isinstance(jb, dict) and limit_for("jooble", jb):
-        jb["remaining_requests"] = max(0, limit_for("jooble", jb) - usage.used("jooble"))
+    for service in ("jooble", "adzuna"):  # tell the planner how many requests each quota has left
+        cfg = source_cfg.get(service)
+        if isinstance(cfg, dict) and usage.remaining(service, cfg) is not None:
+            cfg["remaining_requests"] = usage.remaining(service, cfg)
 
     def record(label, count, error):
         results[label] = {"error": str(error)} if error else {"count": count}

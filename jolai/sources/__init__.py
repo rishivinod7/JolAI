@@ -40,8 +40,25 @@ def _fail(message: str):
     return task
 
 
+def _within_budget(service: str, planned: list, remaining: int | None, pages: int) -> list:
+    """Trim planned searches to the requests left on a quota; a clear error if none are left."""
+    if remaining is None or remaining >= len(planned) * pages:
+        return planned
+    planned = planned[: max(0, remaining // pages)]
+    if planned:
+        return planned
+    name = service.title()
+    return [(service, _fail(f"{name} request limit reached. Upgrade or ask {name} for more requests, "
+                            f"then raise sources.{service}.request_limit in config.yaml."), None)]
+
+
 def _search_api_tasks(sources: dict, terms: list[str]) -> list[tuple[str, callable, object]]:
-    """One task per (country or city) x (search term) for Adzuna and Jooble."""
+    """One task per (search term) x (country or place) for Adzuna and Jooble.
+
+    Both have request quotas, so each searches only its first ``max_terms`` titles and stops at
+    ``remaining_requests`` (set by pipeline.collect_jobs from results/api_usage.json). Titles are
+    the outer loop, so when the budget runs short every place still gets your first titles.
+    """
     tasks = []
     terms = terms or [""]
     az = sources.get("adzuna") or {}
@@ -51,11 +68,12 @@ def _search_api_tasks(sources: dict, terms: list[str]) -> list[tuple[str, callab
         except MissingKey as exc:
             tasks.append(("adzuna", _fail(str(exc)), None))
         else:
-            for country in az["countries"]:
-                for term in terms:
-                    tasks.append((f"adzuna:{country}:{term or 'all'}", adzuna,
-                                  {"country": country, "what": term, "app_id": app_id, "app_key": app_key,
-                                   "pages": az.get("pages", 1), "max_days_old": az.get("max_days_old", 30)}))
+            pages = int(az.get("pages", 1))
+            planned = [(f"adzuna:{country}:{term or 'all'}", adzuna,
+                        {"country": country, "what": term, "app_id": app_id, "app_key": app_key, "pages": pages,
+                         "max_days_old": az.get("max_days_old", 30)})
+                       for term in terms[: int(az.get("max_terms", 6))] for country in az["countries"]]
+            tasks += _within_budget("adzuna", planned, az.get("remaining_requests"), pages)
     jb = sources.get("jooble") or {}
     if jb and jb.get("enabled", True) and jb.get("locations"):
         try:
@@ -63,23 +81,11 @@ def _search_api_tasks(sources: dict, terms: list[str]) -> list[tuple[str, callab
         except MissingKey as exc:
             tasks.append(("jooble", _fail(str(exc)), None))
         else:
-            # Jooble keys have a request quota, so use fewer titles (max_terms, default 4) and stop
-            # at the remaining budget. Titles go in the outer loop, so if the budget runs short every
-            # place still gets your first titles.
             pages = int(jb.get("pages", 1))
-            remaining = jb.get("remaining_requests")  # set by pipeline.collect_jobs from api_usage.json
-            planned = []
-            for term in terms[: int(jb.get("max_terms", 4))]:
-                for location in jb["locations"]:
-                    planned.append((f"jooble:{location}:{term or 'all'}", jooble,
-                                    {"location": location, "keywords": term, "api_key": key, "pages": pages}))
-            if remaining is not None and remaining < len(planned) * pages:
-                planned = planned[: max(0, remaining // pages)]
-                if not planned:
-                    tasks.append(("jooble", _fail("Jooble request limit reached. Ask Jooble for more requests "
-                                                  "(reply to their email), or raise jooble.request_limit "
-                                                  "if they already did."), None))
-            tasks += planned
+            planned = [(f"jooble:{location}:{term or 'all'}", jooble,
+                        {"location": location, "keywords": term, "api_key": key, "pages": pages})
+                       for term in terms[: int(jb.get("max_terms", 4))] for location in jb["locations"]]
+            tasks += _within_budget("jooble", planned, jb.get("remaining_requests"), pages)
     return tasks
 
 

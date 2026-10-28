@@ -11,15 +11,30 @@ Each function answers one question from the product plan (docs/HOW_IT_WORKS.md, 
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from datetime import date, datetime, timedelta
 
 from .models import Job, Match
 
 
+def _same_job_key(job: Job) -> str:
+    """Company + title, ignoring punctuation and location wording, to spot one job listed on several sites."""
+    norm = lambda s: re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()  # noqa: E731
+    return f"{norm(job.company)}|{norm(job.title)}"
+
+
 def source_summary(jobs: list[Job], last_run: dict | None) -> list[dict]:
-    """One row per source: jobs in the latest download, searches run, and failures with their messages."""
+    """One row per source: jobs in the latest download, how many no other source found,
+    searches run, and failures with their messages.
+
+    "Only here" is the number to watch when deciding whether a source is worth keeping (or paying for).
+    """
     found = Counter(j.source for j in jobs)
+    sources_per_job: dict[str, set[str]] = {}
+    for j in jobs:
+        sources_per_job.setdefault(_same_job_key(j), set()).add(j.source)
+    only_here = Counter(next(iter(srcs)) for srcs in sources_per_job.values() if len(srcs) == 1)
     runs: dict[str, dict] = {}
     for label, result in ((last_run or {}).get("sources") or {}).items():
         name = label.split(":", 1)[0]
@@ -33,7 +48,8 @@ def source_summary(jobs: list[Job], last_run: dict | None) -> list[dict]:
     rows = []
     for name in sorted(set(found) | set(runs), key=lambda n: -found.get(n, 0)):
         run = runs.get(name, {"searches": 0, "failed": 0, "errors": []})
-        rows.append({"source": name, "jobs": found.get(name, 0), "searches": run["searches"],
+        rows.append({"source": name, "jobs": found.get(name, 0), "only here": only_here.get(name, 0),
+                     "searches": run["searches"],
                      "failed": run["failed"], "errors": "; ".join(run["errors"])})
     return rows
 

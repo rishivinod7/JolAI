@@ -42,6 +42,8 @@ sources:
     app_key: ""
     pages: 1                # 50 jobs per page
     max_days_old: 30
+    max_terms: 6            # titles searched on Adzuna (each = 1 request per country)
+    request_limit: 25       # test plan; paid plan: 5000 with limit_period: month and daily_limit: 500
   jooble:                   # https://jooble.org/api/about
     locations: []           # e.g. [Hong Kong, India, Singapore]
     api_key: ""

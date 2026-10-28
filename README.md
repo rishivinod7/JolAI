@@ -56,9 +56,11 @@ In the UI, open **Where to look**, pick the countries or places, and paste the k
 in `config.yaml`, which is git-ignored. Each search runs once per job title (up to 6) per place.
 These sites only return a short summary of each job, so their scores lean more on the title.
 
-Jooble keys come with a limit (500 requests by default). JolAI counts every request, searches
-only your first 4 titles on Jooble (change this under **Where to look**), reuses results for
-6 hours, and stops before the limit. The Stats tab shows how many you've used.
+Both have request limits: Jooble gives 500 per key by default; Adzuna gives 25 test calls, then
+5,000 a month (500 a day) on its paid plan. JolAI counts every request, searches only your first
+few titles on each (change this under **Where to look**), reuses results for 6 hours, and stops
+before a limit. The Stats tab shows requests used, and how many jobs each source found that no
+other source did ("only here"), which helps decide whether a paid plan is worth it.
 
 **Add companies you like:**
 
