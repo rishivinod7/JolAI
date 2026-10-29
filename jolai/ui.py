@@ -25,6 +25,7 @@ import streamlit as st
 from jolai import pipeline, stats
 from jolai.config import load_config, save_config
 from jolai.filters import technical_label
+from jolai.matcher import gap_label
 from jolai.models import pay_text
 from jolai.sources.search_apis import ADZUNA_COUNTRIES
 from jolai.usage import Usage, limit_for, usage_text
@@ -159,6 +160,11 @@ with st.sidebar:
     prefs["max_technical"] = tech_options[st.select_slider(
         "How technical can the job be?", list(tech_options), current_tech,
         help="Based on the job title, how many technical tools it lists, and words like 'coding'.")]
+    prefs["hide_missing_experience"] = st.toggle(
+        "Hide jobs needing a background I don't have", prefs.get("hide_missing_experience", False),
+        help="E.g. a Key Account Manager role asking for past sales or account management experience, "
+             "management consulting experience, or a required PMP/CPA. New kinds of roles still show "
+             "when they're entry level or say they'll train you.")
     years = st.slider("Most years of experience a job may ask for", 0, 15,
                       prefs.get("max_years") if prefs.get("max_years") is not None else 15,
                       help="15 means no limit. Jobs that don't say how many years always stay.")
@@ -340,8 +346,9 @@ def fact_chips(f) -> str:
     auth_badge = {"ok": ("✓ you can work here", "ok"), "sponsors": ("sponsors visas", "ok"),
                   "unclear": ("visa sponsorship unclear", "warn")}.get(f.work_authorization or "")
     warn = [f"needs {lang}" for lang in f.languages_required] + [f"{lang} a plus" for lang in f.languages_optional]
+    gaps = [f"needs {gap_label(g)}" for g in f.experience_gaps]
     auth_html = chips([auth_badge[0]], auth_badge[1]) if auth_badge else ""
-    return chips(badges) + auth_html + chips(warn, "warn")
+    return chips(badges) + auth_html + chips(warn, "warn") + chips(gaps, "miss")
 
 
 def job_meta(j) -> str:

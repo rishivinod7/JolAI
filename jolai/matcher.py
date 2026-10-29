@@ -21,7 +21,8 @@ from dataclasses import dataclass, field
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from .filters import language_requirements, technical_score, work_authorization
+from .filters import (experience_required, experience_you_have, language_requirements, technical_score,
+                      work_authorization)
 from .models import Job, Match, Profile
 from .resume import LEVELS
 from .skills import extract_skills
@@ -36,7 +37,6 @@ LEVEL_PATTERNS = [
 MANAGEMENT_RE = re.compile(r"\b(manager|director|head of|vp|vice president)\b", re.I)
 PEOPLE_MGMT_RE = re.compile(r"direct reports|people management|manag(e|ing) a team|lead(ing)? a team of|"
                             r"build(ing)? (and lead(ing)? )?a team|hire and (develop|manage)|line management", re.I)
-YEARS_REQ_RE = re.compile(r"(\d{1,2})\s*\+?\s*(?:-|–|to)?\s*(?:\d{1,2})?\s*\+?\s*(?:years|yrs)", re.I)
 TITLE_NOISE = {"senior", "sr", "junior", "jr", "staff", "principal", "lead", "i", "ii", "iii", "iv", "the", "of",
                "and", "remote", "hybrid", "contract", "full", "time", "part", "new", "grad"}
 
@@ -60,6 +60,7 @@ class Preferences:
     max_years: int | None = None  # drop jobs asking for more years than this
     max_level: str | None = None  # drop titles above this level, e.g. "mid" drops senior/staff/principal
     max_technical: int | None = None  # drop jobs whose technical score (0-100) is above this
+    hide_missing_experience: bool = False  # drop jobs needing a background you don't have (e.g. sales, PMP)
     alpha: float = 0.6  # weight of "chance" vs "want"
 
 
@@ -73,20 +74,29 @@ class JobFacts:
     languages_optional: list[str]
     technical: int
     work_authorization: str | None = None  # "ok", "sponsors", "unclear", "blocked" (None = no permits set)
+    experience_needed: list[str] = field(default_factory=list)  # backgrounds it requires, e.g. ["sales"]
+    experience_gaps: list[str] = field(default_factory=list)  # of those, the ones your resume doesn't show
 
 
 def read_job(job: Job, prefs: Preferences | None = None) -> JobFacts:
     required, optional = language_requirements(job.description)
     permits = prefs.work_permits if prefs else []
+    level = job_level(job.title)
     return JobFacts(
-        level=job_level(job.title),
+        level=level,
         years_required=years_required(job.description),
         languages_required=required,
         languages_optional=optional,
         technical=technical_score(job.title, job.description),
         work_authorization=work_authorization(job.location, job.remote, job.description, permits)
         if permits else None,
+        experience_needed=experience_required(job.title, job.description, level),
     )
+
+
+def gap_label(gap: str) -> str:
+    """'sales' -> 'sales experience'; certifications stay as they are."""
+    return gap if gap.endswith("certification") else f"{gap} experience"
 
 
 def job_level(title: str) -> int:
@@ -96,16 +106,49 @@ def job_level(title: str) -> int:
     return 2
 
 
+_WORD_NUMBERS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+                 "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "fifteen": 15}
+_NUM = r"(\d{1,2}|" + "|".join(_WORD_NUMBERS) + r")"
+# "8+ years", "8-10 years", "eight years", "5 to 8 yrs"
+YEARS_PHRASE_RE = re.compile(rf"\b{_NUM}\s*\+?\s*(?:(?:-|–|to)\s*{_NUM}\s*\+?\s*)?(?:years?|yrs?)\b['’]?", re.I)
+_BEFORE_OK = re.compile(r"(experience|exp\.?|at least|minimum|min\.?|more than|over|require[sd]?|need(ed|s)?|"
+                        r"with)\W*(of\W*)?$", re.I)
+_AFTER_OK = re.compile(r"^\W*(\+\s*)?(of\s+)?((relevant|related|professional|working|work|industry|hands-on|proven|"
+                       r"progressive|post-?qualification|full-?time)\s+)*(experience|exp\b)|^\s*(in|within)\s+(a|an|the)?\s*"
+                       r"(similar|related|relevant|comparable|same)|^\s*(in|of|as)\s+[\w&/ -]{2,40}?(experience|role|"
+                       r"position|industry|function|field|sales|management|consulting|marketing|finance|banking)", re.I)
+_NOT_A_REQUIREMENT = re.compile(r"(for|past|last|since|founded|operating|history|over the)\W*(over\W*)?$", re.I)
+# "10 years in business", "15 years ago": the company's age, not a requirement.
+_COMPANY_AGE = re.compile(r"^\W*(ago|old|in business|of history|of operation|in the market|of growth|running)\b", re.I)
+
+
+def _to_int(token: str) -> int:
+    return int(token) if token.isdigit() else _WORD_NUMBERS[token.lower()]
+
+
 def years_required(text: str) -> int | None:
-    """Smallest 'N+ years' requirement mentioned near the word experience."""
+    """How many years of experience a posting asks for, or None if it doesn't say.
+
+    Reads "8+ years of experience", "Experience: 8-10 years", "at least 8 years in sales",
+    "5-8 years in a similar role" and "eight years", and skips things like "operating for 20
+    years". When a posting mentions several numbers ("2+ years of Excel, 8+ years of
+    experience"), the largest one is the real bar, so that's what's returned. Ranges count
+    from their lower end ("8-10 years" -> 8).
+    """
     found = []
-    for m in YEARS_REQ_RE.finditer(text):
-        window = text[m.end(): m.end() + 60].lower()
-        if "experience" in window or "exp" in window[:10]:
-            years = int(m.group(1))
+    for m in YEARS_PHRASE_RE.finditer(text):
+        before = text[max(0, m.start() - 30): m.start()]
+        after = text[m.end(): m.end() + 60]
+        if _COMPANY_AGE.search(after) or (_NOT_A_REQUIREMENT.search(before)
+                                           and not re.search(r"experience", after[:30], re.I)):
+            continue
+        # "experience" earlier in the same clause counts ("Experience: 8+ years"), but not across ";" or "."
+        same_clause = re.split(r"[.;!?\n]", text[max(0, m.start() - 40): m.start()].lower())[-1]
+        if _BEFORE_OK.search(before) or _AFTER_OK.search(after) or "experience" in same_clause:
+            years = _to_int(m.group(1))
             if 0 < years <= 20:
                 found.append(years)
-    return min(found) if found else None
+    return max(found) if found else None
 
 
 def _title_tokens(title: str) -> set[str]:
@@ -153,6 +196,8 @@ def excluded(job: Job, facts: JobFacts, prefs: Preferences) -> str | None:
         return "too senior"
     if prefs.max_technical is not None and facts.technical > prefs.max_technical:
         return "too technical"
+    if prefs.hide_missing_experience and facts.experience_gaps:
+        return f"needs {gap_label(facts.experience_gaps[0])} you don't have"
     return None
 
 
@@ -219,8 +264,10 @@ def score_jobs(profile: Profile, jobs: list[Job], prefs: Preferences, keep_ids: 
     kept: list[Job] = []
     facts_by_id: dict[str, JobFacts] = {}
     overridden: dict[str, str] = {}
+    backgrounds = experience_you_have(profile.text, profile.skills, profile.titles)
     for job in jobs:
         facts = read_job(job, prefs)
+        facts.experience_gaps = [g for g in facts.experience_needed if g not in backgrounds]
         reason = excluded(job, facts, prefs)
         if reason and keep_ids and job.id in keep_ids:
             overridden[job.id] = reason
@@ -255,7 +302,13 @@ def score_jobs(profile: Profile, jobs: list[Job], prefs: Preferences, keep_ids: 
         facts = facts_by_id[job.id]
         seniority, seniority_reasons = _seniority_fit(profile, job, facts)
         reasons += seniority_reasons
+        if facts.experience_gaps:
+            # A required background you don't have is a high barrier (chance is cut by 40% below).
+            reasons.append("asks for " + ", ".join(gap_label(g) for g in facts.experience_gaps)
+                           + "; your resume doesn't show it")
         chance = 0.35 * semantic + 0.35 * skill_score + 0.30 * seniority
+        if facts.experience_gaps:
+            chance *= 0.6
 
         # "want" components; ones you didn't configure are left out instead of guessed.
         parts: list[tuple[float, float]] = []

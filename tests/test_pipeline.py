@@ -620,3 +620,44 @@ def test_sales_data_is_not_a_sales_skill_and_ignore_skills():
     assert "Financial Analysis" in extract_skills("Built financial models and ran P&L reviews")
     profile = build_profile("Power BI dashboards and marketing decks", ignore_skills=["marketing"])
     assert "Marketing" not in profile.skills and "Power BI" in profile.skills
+
+
+def test_years_required_phrasings():
+    cases = {"Minimum 8-10 years of experience in key account management": 8, "Experience: 8+ years": 8,
+             "At least 8 years in FMCG sales": 8, "Requirements: 2+ years using Excel. 8+ years of experience.": 8,
+             "Eight years of relevant experience": 8, "5-8 years in a similar role": 5,
+             "Founded 15 years ago, we help brands grow.": None, "This is a 2 year contract.": None,
+             "We have been operating for 20 years. 3 years experience needed.": 3,
+             "Requires 3-5 years of professional experience; 10 years in business": 3}
+    assert {text: years_required(text) for text in cases} == cases
+
+
+def test_backgrounds_you_dont_have():
+    from jolai import pipeline
+    from jolai.filters import experience_required, experience_you_have
+
+    assert experience_required("Key Account Manager", "Grow our top customers.", 2) == ["sales"]
+    assert experience_required("Sales Associate", "Entry-level, no experience required.", 1) == []
+    assert experience_required("Business Analyst", "Work with sales teams to gather requirements.", 2) == []
+    assert experience_required("Strategy Associate", "Management consulting experience is preferred.", 1) == []
+    assert experience_required("Project Manager", "PMP certification is required.", 2) == ["PMP certification"]
+    assert experience_you_have("Managed quotations and lead times", set(), ["Intern"]) == set()  # not "quota"
+    assert experience_you_have("Exceeded sales targets", {"Sales"}, []) == {"sales"}
+
+    jobs = [Job("Key Account Manager", "BrandCo", "u1", "jooble", "Hong Kong",
+                "3+ years of experience in key account management or FMCG sales."),
+            Job("Business Analyst", "BankCo", "u2", "jooble", "Hong Kong",
+                "Gather business requirements from stakeholders. 2+ years of experience."),
+            Job("Senior Partnerships Manager", "AsiaHub", "u3", "jooble", "Hong Kong",
+                "Minimum 8-10 years of experience in partnerships.")]
+    config = {"resume": str(FIX / "resume_business.txt"), "preferences": dict(BUSINESS_PREFS)}
+    profile = pipeline.read_profile(config)
+    shown = pipeline.rank_all(profile, jobs, config)
+    kam = next(m for m in shown.matches if m.job.company == "BrandCo")
+    assert kam.facts.experience_gaps == ["sales"] and any("sales experience" in r for r in kam.reasons)
+    assert shown.filtered == {"asks for too many years": 1}  # 8-10 years > max_years 5
+
+    config["preferences"]["hide_missing_experience"] = True
+    hidden = pipeline.rank_all(profile, jobs, config)
+    assert [m.job.title for m in hidden.matches] == ["Business Analyst"]
+    assert hidden.filtered == {"asks for too many years": 1, "needs sales experience you don't have": 1}

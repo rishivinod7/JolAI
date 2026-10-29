@@ -235,3 +235,117 @@ def work_authorization(job_location: str, remote: bool, text: str, permits: list
     if SPONSORS_RE.search(text):
         return "sponsors"
     return "unclear"
+
+
+# --------------------------------------------------------------------------------------
+# 4. Does it need a background you don't have? (e.g. sales, consulting, a certification)
+# --------------------------------------------------------------------------------------
+# Changing field is fine when the door is open: an entry-level sales job doesn't need past sales
+# experience. A "Key Account Manager" asking for "3+ years in account management" does. For each
+# background we know:
+#   title:     job titles that, above entry level, assume you've done this before
+#   asks:      words that, after "experience in/as/of" or before "experience", name the background
+#   evidence:  skills, past titles or resume wording that show you have it
+
+_SOFT_ASK = re.compile(r"\b(preferred|a plus|plus\b|bonus|advantage|advantageous|nice to have|nice-to-have|ideally|"
+                       r"desirable|beneficial|not required|not necessary)\b", re.I)
+_OPEN_DOOR = re.compile(r"no (prior |previous )?(\w+ )?experience (is )?(required|needed|necessary)|"
+                        r"fresh graduates?|graduates? welcome|will train|training provided|entry[- ]level", re.I)
+
+EXPERIENCE_AREAS: dict[str, dict] = {
+    "sales": {
+        "title": r"\b(sales|account (manager|executive|director|lead)|key account|business development|"
+                 r"bd (manager|executive|lead)|territory manager|channel (sales|manager)|inside sales)\b",
+        "asks": r"(b2b |b2c |enterprise |field |direct )?(sales|selling|account management|key account management|"
+                r"business development|new business|quota|revenue targets?|sales targets?)",
+        "skills": {"Sales"},
+        "evidence": r"sales targets?|quota|closed deals|closing deals|revenue targets?|new business|"
+                    r"account executive|sales (manager|executive|representative)|business development (manager|executive)",
+    },
+    "management consulting": {
+        "title": r"\b(management|strategy) consult(ant|ing)\b|\bengagement manager\b",
+        "asks": r"(management|strategy|strategic|top[- ]tier|mbb|big 4|big four) consulting|consulting firm",
+        "skills": set(),
+        "evidence": r"(management|strategy) consult|consulting firm|mckinsey|boston consulting|\bbcg\b|\bbain\b|"
+                    r"deloitte|\bpwc\b|\bkpmg\b|ernst|accenture strategy",
+    },
+    "finance": {
+        "title": r"\b(financial analyst|finance (manager|analyst|business partner)|fp&a|accountant|controller|"
+                 r"auditor|investment banking|credit analyst|treasury)\b",
+        "asks": r"(corporate finance|fp&a|financial planning|accounting|audit|investment banking|equity research|"
+                r"treasury|private equity)",
+        "skills": {"Financial Analysis", "Accounting", "Bookkeeping"},
+        "evidence": r"financial (analyst|modell?ing)|accountant|\baudit|investment bank|fp&a",
+    },
+    "marketing": {
+        "title": r"\b(marketing (manager|lead|specialist|executive)|brand manager|performance marketing|growth marketer|"
+                 r"seo (manager|specialist)|content marketing)\b",
+        "asks": r"(digital marketing|performance marketing|brand management|growth marketing|marketing)",
+        "skills": set(),  # the Marketing skill alone is too weak ("supported marketing decks")
+        "evidence": r"marketing (manager|executive|specialist|campaigns?)|brand manager|campaigns",
+    },
+    "people management": {
+        "title": r"(?!x)x",  # never matches; level filters already handle Head of / Director titles
+        "asks": r"(people management|line management|managing (a )?teams?|leading (a )?teams?|direct reports)",
+        "skills": set(),
+        "evidence": r"\b(managed|led) (a )?team of|direct reports|line managed|people manager",
+    },
+    "recruiting": {
+        "title": r"\b(recruiter|talent acquisition|recruitment consultant)\b",
+        "asks": r"(recruiting|recruitment|talent acquisition)",
+        "skills": {"Recruiting"},
+        "evidence": r"recruit(er|ing|ment)|talent acquisition",
+    },
+}
+_NOT_THE_AREA = r"(?!\s+(teams?|stakeholders?|department|colleagues|leaders|leadership|functions?|data|reports?|tools?))"
+
+# Certifications postings sometimes make mandatory.
+CREDENTIALS = {"PMP": r"\bpmp\b", "PRINCE2": r"\bprince ?2\b", "CPA": r"\bcpa\b", "ACCA": r"\bacca\b",
+               "CFA": r"\bcfa\b", "CIMA": r"\bcima\b", "Scrum Master certification": r"\b(csm|certified scrum master)\b",
+               "Six Sigma": r"six sigma"}
+
+
+def experience_required(title: str, text: str, level: int) -> list[str]:
+    """Backgrounds a posting requires: from an explicit ask ("3+ years in account management",
+    "sales experience required"), or from the title when the role is above entry level and
+    doesn't say it will train you. Also mandatory certifications ("PMP required")."""
+    needed = []
+    open_door = bool(_OPEN_DOOR.search(text))
+    for area, spec in EXPERIENCE_AREAS.items():
+        asks = spec["asks"]
+        patterns = [
+            rf"\b(experience|background|track record|years)\s+(\w+\s+){{0,2}}(in|within|as|of|selling)\s+"
+            rf"(an?\s+|the\s+)?(\w+\s+){{0,2}}?{asks}\b{_NOT_THE_AREA}",
+            rf"\b{asks}\b{_NOT_THE_AREA}\s+(\w+\s+){{0,1}}(experience|background)",
+        ]
+        if area == "sales":
+            patterns.append(r"track record of (meeting|exceeding|achieving|hitting) (\w+ ){0,2}targets")
+        asked = False
+        for sentence in re.split(r"(?<=[.!?;])\s+|\n+", text):
+            if any(re.search(p, sentence, re.I) for p in patterns) and not _SOFT_ASK.search(sentence):
+                asked = True
+                break
+        by_title = level >= 2 and not open_door and bool(re.search(spec["title"], title, re.I))
+        if asked or by_title:
+            needed.append(area)
+    for name, pattern in CREDENTIALS.items():
+        for sentence in re.split(r"(?<=[.!?;])\s+|\n+", text):
+            if re.search(pattern, sentence, re.I) and re.search(r"required|mandatory|must", sentence, re.I) \
+                    and not _SOFT_ASK.search(sentence):
+                needed.append(f"{name} certification" if "certification" not in name else name)
+                break
+    return needed
+
+
+def experience_you_have(resume_text: str, skills: set[str], titles: list[str]) -> set[str]:
+    """The backgrounds from EXPERIENCE_AREAS (and certifications) your resume shows."""
+    have = set()
+    joined_titles = " ".join(titles)
+    for area, spec in EXPERIENCE_AREAS.items():
+        if spec["skills"] & skills or re.search(spec["title"], joined_titles, re.I) or \
+                re.search(rf"\b(?:{spec['evidence']})\b", resume_text, re.I):  # \b: "quota" isn't "quotations"
+            have.add(area)
+    for name, pattern in CREDENTIALS.items():
+        if re.search(pattern, resume_text, re.I):
+            have.add(f"{name} certification" if "certification" not in name else name)
+    return have

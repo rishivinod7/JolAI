@@ -63,8 +63,16 @@ First, `filters.py` reads each posting and works out:
   - *unclear*: elsewhere, and the posting doesn't say (most postings don't)
   - *blocked*: elsewhere, and the posting says "no sponsorship" or "must have the right to work in…"
 
-`matcher.py` adds the **level** from the title and the **years** asked for ("3+ years of
-experience"). Then `excluded()` drops jobs that break one of your rules: a language you don't speak,
+- **backgrounds it requires** that your resume doesn't show: past sales or account management,
+  management consulting, finance, marketing, recruiting or people management, plus mandatory
+  certifications like PMP or CPA. This comes from explicit asks ("3+ years in account
+  management") or, above entry level, from the title (a Key Account Manager assumes sales
+  experience). Entry-level roles, and ones that say they'll train you, don't count, and nor do
+  asks marked "preferred" or "a plus".
+
+`matcher.py` adds the **level** from the title and the **years** asked for. It understands "8+
+years of experience", "Experience: 8-10 years", "at least 8 years in sales" and "eight years",
+and uses the largest number a posting asks for. Then `excluded()` drops jobs that break one of your rules: a language you don't speak,
 too technical, too many years, too senior, won't sponsor your visa, hidden words or companies.
 Jobs where sponsorship is *unclear* stay, but score lower on "want" and carry a yellow badge.
 

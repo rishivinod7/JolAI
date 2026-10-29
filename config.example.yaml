@@ -20,6 +20,7 @@ preferences:
   max_technical: low      # low = not technical, medium = a little, any = no limit
   max_years: 3            # drop jobs asking for more years of experience than this
   max_level: mid          # drop titles above this: entry, mid, senior (or leave out)
+  hide_missing_experience: true   # drop jobs needing a background you lack (past sales, consulting, PMP...)
   exclude_title_keywords: ["intern", "sales"]
   exclude_keywords: []    # drop postings mentioning any of these
   exclude_companies: []

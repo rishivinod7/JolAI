@@ -54,6 +54,7 @@ def preferences_from(config: dict) -> Preferences:
         max_years=p.get("max_years"),
         max_level=p.get("max_level"),
         max_technical=_technical_limit(p.get("max_technical")),
+        hide_missing_experience=bool(p.get("hide_missing_experience", False)),
         alpha=float(weights.get("chance_vs_want", 0.6)),
     )
 
@@ -82,4 +83,7 @@ def describe_preferences(prefs: Preferences) -> str:
         lines.append(f"Wants roles asking for at most {prefs.max_years} years of experience.")
     if prefs.max_technical is not None:
         lines.append("Wants roles that are not very technical (little or no coding).")
+    if prefs.hide_missing_experience:
+        lines.append("Open to new kinds of roles, but not ones that require prior experience in a field "
+                     "(e.g. sales, consulting) or a certification the resume doesn't show.")
     return "\n".join(lines) or "No stated preferences."
